@@ -1,6 +1,11 @@
 import { render } from "preact";
-import { signal } from "@preact/signals";
+import { App } from "./ui/App";
+import { fetchMe } from "./state/auth";
+import "./style.css";
 
-// ponytail: real Pixi canvas + viewport lands in Paso 4. Signals + UI shell only.
-const boot = signal("RollForge boot OK");
-render(<h1>{boot}</h1>, document.getElementById("app")!);
+async function bootstrap() {
+  render(<App />, document.getElementById("ui-root")!);
+  await fetchMe();
+}
+
+void bootstrap();
