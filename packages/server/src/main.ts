@@ -1,17 +1,18 @@
-import express from "express";
-import { createServer } from "node:http";
-import { Server as SocketIOServer } from "socket.io";
-import { VERSION } from "./version.js";
+import { createRollforgeServer, listen } from "./server";
+import { DocumentStore } from "./db/documentStore";
+import { ensureWorldDir } from "./db/worlds";
+import { VERSION } from "./version";
 
-const app = express();
-const httpServer = createServer(app);
-const io = new SocketIOServer(httpServer);
+const DATA_DIR = process.env.ROLLFORGE_DATA ?? "data";
+const WORLD_ID = process.env.ROLLFORGE_WORLD ?? "default";
+const DB_PATH = ensureWorldDir(DATA_DIR, WORLD_ID);
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, version: VERSION });
+const server = createRollforgeServer({
+  dataDir: DATA_DIR,
+  store: new DocumentStore(DB_PATH),
 });
-
-// ponytail: auth, sync rooms and db land in Fase 1 / Paso 3+. Skeleton only.
-httpServer.listen(3000, () => {
-  console.log(`[rollforge/server] v${VERSION} listening on :3000`);
+listen(server, 3000).then((port) => {
+  console.log(
+    `[rollforge/server] v${VERSION} listening on :${port} (world: ${WORLD_ID}, db: ${DB_PATH})`,
+  );
 });
