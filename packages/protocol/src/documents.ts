@@ -27,7 +27,7 @@ export interface SceneSystem {
   width: number;
   height: number;
   background: string | null;
-  grid: { size: number; color: string; type: "square" | "hex" };
+  grid: { size: number; color: number; type: "square" | "hex" };
 }
 export type Scene = Document<SceneSystem>;
 
@@ -52,7 +52,39 @@ export interface ReleaseDragLockIntent {
   tokenId: string;
 }
 
-export type Intent = MoveTokenIntent | AcquireDragLockIntent | ReleaseDragLockIntent;
+export interface SetActiveSceneIntent {
+  type: "SetActiveScene";
+  sceneId: string;
+}
+
+export interface CreateSceneIntent {
+  type: "CreateScene";
+  sceneId: string;
+  // ponytail: human-readable label. Defaults to sceneId on the server if empty.
+  name: string;
+  system: SceneSystem;
+}
+
+export interface UpdateSceneIntent {
+  type: "UpdateScene";
+  sceneId: string;
+  name: string;
+  system: SceneSystem;
+}
+
+export interface DeleteSceneIntent {
+  type: "DeleteScene";
+  sceneId: string;
+}
+
+export type Intent =
+  | MoveTokenIntent
+  | AcquireDragLockIntent
+  | ReleaseDragLockIntent
+  | SetActiveSceneIntent
+  | CreateSceneIntent
+  | UpdateSceneIntent
+  | DeleteSceneIntent;
 
 export interface TokenPositionDiff {
   type: "TokenPositionDiff";
@@ -76,4 +108,37 @@ export interface DragLockReleasedEvent {
   tokenId: string;
 }
 
-export type SceneEvent = TokenPositionDiff | DragLockAcquiredEvent | DragLockReleasedEvent;
+export interface ActiveSceneChangedEvent {
+  type: "ActiveSceneChanged";
+  sceneId: string;
+}
+
+export interface SceneCreatedEvent {
+  type: "SceneCreated";
+  sceneId: string;
+  name: string;
+  system: SceneSystem;
+  _rev: number;
+}
+
+export interface SceneUpdatedEvent {
+  type: "SceneUpdated";
+  sceneId: string;
+  name: string;
+  system: SceneSystem;
+  _rev: number;
+}
+
+export interface SceneDeletedEvent {
+  type: "SceneDeleted";
+  sceneId: string;
+}
+
+export type SceneEvent =
+  | TokenPositionDiff
+  | DragLockAcquiredEvent
+  | DragLockReleasedEvent
+  | ActiveSceneChangedEvent
+  | SceneCreatedEvent
+  | SceneUpdatedEvent
+  | SceneDeletedEvent;
