@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Document, OwnershipLevel } from "./documents.js";
+import type { Document, OwnershipLevel } from "./documents";
 
 describe("OwnershipLevel", () => {
   it("accepts the four documented levels", () => {

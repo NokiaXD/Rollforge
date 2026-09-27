@@ -1,4 +1,4 @@
-import type { Document } from "./documents.js";
+import type { Document } from "./documents";
 
 export interface ExtensionManifest {
   id: string;

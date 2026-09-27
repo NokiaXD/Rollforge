@@ -1,4 +1,4 @@
-import type { SceneEvent, Intent } from "./documents.js";
+import type { SceneEvent, Intent } from "./documents";
 
 export interface SocketEnvelope<T> {
   v: 1;
