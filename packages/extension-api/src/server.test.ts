@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { freezeServerAPI, type ServerExtensionAPI } from "./server.js";
+import { freezeServerAPI, type ServerExtensionAPI } from "./server";
 
 describe("server API freeze", () => {
   it("freezes the api object so internals cannot be mutated", () => {

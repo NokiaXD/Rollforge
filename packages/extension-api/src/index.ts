@@ -1,3 +1,3 @@
-export * from "./server.js";
-export * from "./client.js";
-export * from "./testing.js";
+export * from "./server";
+export * from "./client";
+export * from "./testing";
