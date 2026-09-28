@@ -1,0 +1,41 @@
+name: Proposal
+description: Propose a change to the extension API, manifest schema, or socket protocol.
+labels: ["proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The extension API is the project's contract. Big changes need
+        discussion before code, not after. Please fill in the motivation
+        and design before sending the PR.
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What real use case drives this change? Link the issue(s).
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed design
+      description: New types, new methods, new events. Show the shape, not just prose.
+    validations:
+      required: true
+  - type: textarea
+    id: migration
+    attributes:
+      label: Migration / compatibility
+      description: Is this breaking? How would existing extensions adapt? What's the deprecation path?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other designs that were considered and why this one wins.
+  - type: textarea
+    id: dogfood
+    attributes:
+      label: Dogfood plan
+      description: How will this be exercised in `core-chat-dice` or another in-tree extension before it stabilises?

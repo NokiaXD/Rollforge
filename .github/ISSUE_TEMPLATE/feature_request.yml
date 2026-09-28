@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a new feature. For extension-API or protocol changes, use Proposal instead.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For changes that touch the extension API, manifest schema, or
+        socket protocol, please file a **proposal** issue instead so
+        the contract can be discussed before code.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, or what is annoying about how it's done?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How would you like it to work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways to solve this. Why is yours better?
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: Where would this live?
+      options:
+        - Core (server / client / protocol)
+        - Built-in extension (e.g. core-chat-dice)
+        - Third-party extension only
+        - Documentation / tooling
+        - Not sure

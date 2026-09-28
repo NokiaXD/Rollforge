@@ -1,0 +1,59 @@
+name: Bug report
+description: Something is broken — a runtime error, wrong behavior, or visual glitch.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in what you can — empty
+        reports don't get acted on.
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: What did you do? Exact commands, exact chat input, exact click sequence.
+      placeholder: |
+        1. Open client at http://localhost:5173
+        2. Send chat: `/roll 2d6+3`
+        3. See "forbidden" rejection
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: What actually happened? Include the error text if any.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      description: Where does the bug surface?
+      options:
+        - Server (Express / socket.io / extension manager)
+        - Client (Preact UI / Pixi renderer)
+        - Extension (manifest, activation, hook, command)
+        - Build / install / tooling
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `pnpm -r --depth 0 ls --json` or just commit hash.
+      placeholder: "main @ a1b2c3d, node 20.x, pnpm 10.x"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant server log lines or browser console errors.
+      render: shell
