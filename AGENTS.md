@@ -7,7 +7,7 @@ VTT monorepo (pnpm workspaces). Four packages in `packages/`:
 | `@rollforge/protocol` | Shared types: `Document`, `Intent`, `SceneEvent`, manifest, hooks. | Exports **directly from `src/index.ts`** (no build needed for consumers). Build with `tsc -b` only to emit `.d.ts`. |
 | `@rollforge/extension-api` | Frozen `api` surface (`server`, `client`, `testing`) handed to extensions. | Types-first; runtime helpers are just `Object.freeze`. |
 | `@rollforge/server` | Express + socket.io. Authoritative state, drag-lock throttle, JWT/argon2 deps wired but auth runs at `resolveUserId = user-${socket.id}` in Fase 0. | Entrypoint: `src/main.ts`. |
-| `@rollforge/client` | Vite + Preact + PixiJS. Pixi init is **async** (`await app.init(...)`). | Entrypoint: `src/main.tsx`; mounts `<App />` into `#ui-root` and Pixi into `#canvas-host`. |
+| `@rollforge/client` | Vite + Preact + PixiJS. Pixi init is **async** (`await createPixi(host)`). | Entrypoint: `src/main.tsx` mounts `<App />` into `#ui-root`; `App.tsx` mounts Pixi into `#canvas-host`. |
 
 Cross-package imports use `workspace:*` (already declared in each `package.json`).
 
@@ -48,7 +48,7 @@ Verify it's indexed before relying on it (`codebase_index_status`); re-index wit
 
 - `@preact/signals` is the reactive store. `tokens`, `locks`, `currentSceneId`, `myUserId`, `cellSize` are signals.
 - `SceneRenderer` reconciles sprites via `effect(() => reconcile(tokens.value, sendIntent))` in `packages/client/src/canvas/sceneRenderer.ts`. New token ⇒ create sprite; missing ⇒ `sprite.destroy()`.
-- Pixi HMR cleanup hook is in `packages/client/src/main.tsx` (`import.meta.hot.dispose`). Don't remove it — full reload leaks the previous `<canvas>`.
+- Pixi HMR cleanup hook is in `packages/client/src/ui/App.tsx` (`import.meta.hot.dispose`). Don't remove it — full reload leaks the previous `<canvas>`.
 
 ## TS gotchas
 
@@ -73,7 +73,7 @@ Common picks: ✨ `:sparkles:` feature · 🐛 `:bug:` fix · 📝 `:memo:` docs
 - `pnpm.onlyBuiltDependencies: ["esbuild"]` is pinned in root `package.json`; do not remove or pnpm will refuse to build native deps.
 - `packageManager: pnpm@10.19.0` — keep Corepack enabled, do not switch package managers casually.
 - No persistence yet: `SceneState` is in-memory; restart the server and tokens vanish. `better-sqlite3` is planned but not wired.
-- `system.md` and `plan-implementacion.md` are design/roadmap docs, **not** the current implementation. Don't treat them as authoritative for what exists; verify in `packages/`.
+
 
 ## File map (what lives where)
 
@@ -81,7 +81,8 @@ Common picks: ✨ `:sparkles:` feature · 🐛 `:bug:` fix · 📝 `:memo:` docs
 - `packages/server/src/server.ts` — Express + socket.io assembly; exposes `RollforgeServer`.
 - `packages/server/src/sync/socket.ts` — all socket handlers, drag-lock throttle (`moveHzCap`), disconnect cleanup.
 - `packages/server/src/sync/sceneState.ts` — authoritative token store + lock map.
-- `packages/client/src/main.tsx` — bootstrap: render `<App />`, init Pixi, draw grid, start renderer, connect socket, join default scene.
+- `packages/client/src/main.tsx` — bootstrap: render `<App />` into `#ui-root`, trigger `fetchMe()` auth check.
+- `packages/client/src/ui/App.tsx` — mounts canvas, inits Pixi, draws grid & background, starts renderer, connects socket.
 - `packages/client/src/net/socket.ts` — `connectSocket`, `joinScene`, `sendIntent`, `createTokenRequest`.
 - `packages/client/src/canvas/{pixiApp,sceneRenderer,tokens,grid}.ts` — canvas layer.
 - `packages/client/src/state/scene.ts` — signals + `applyEvent` reducer.
