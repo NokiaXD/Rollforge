@@ -12,6 +12,7 @@ export interface ExtensionManifest {
     chatCommands?: ChatCommandContribution[];
   };
   main?: { server?: string; client?: string };
+  builtin?: boolean;
 }
 
 export interface DocumentTypeContribution {
