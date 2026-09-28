@@ -3,31 +3,45 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DocumentStore } from "../db/documentStore";
+import { openWorldDb } from "../db/connection";
 import { SceneState } from "./sceneState";
+import type { Database as DB } from "better-sqlite3";
 
 let dir: string;
 let dbPath: string;
+let openDbs: DB[] = [];
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "rollforge-state-"));
   dbPath = join(dir, "world.db");
+  openDbs = [];
 });
 
 afterEach(() => {
+  for (const db of openDbs) db.close();
   rmSync(dir, { recursive: true, force: true });
 });
+
+function openDb(): DB {
+  const db = openWorldDb(dbPath);
+  openDbs.push(db);
+  return db;
+}
 
 // Paso 7 verification: create tokens, "restart" the server (close + reopen the store),
 // confirm state is identical.
 describe("SceneState persistence", () => {
   it("tokens survive a server restart via DocumentStore", () => {
-    const store1 = new DocumentStore(dbPath);
+    const db1 = openDb();
+    const store1 = new DocumentStore(db1);
     const state1 = new SceneState({ store: store1 });
     state1.createToken("tok-1", "scene-1", 3, 4);
     state1.createToken("tok-2", "scene-1", 7, 8);
-    store1.close();
+    db1.close();
+    openDbs.length = 0;
 
-    const store2 = new DocumentStore(dbPath);
+    const db2 = openDb();
+    const store2 = new DocumentStore(db2);
     const state2 = new SceneState({ store: store2 });
     const tokens = state2.getSceneTokens("scene-1");
 
@@ -36,11 +50,11 @@ describe("SceneState persistence", () => {
     expect(t1?.x).toBe(3);
     expect(t1?.y).toBe(4);
     expect(t1?._rev).toBe(0);
-    store2.close();
   });
 
 it("moveToken persists new position and bumps _rev", () => {
-    const store = new DocumentStore(dbPath);
+    const db = openDb();
+    const store = new DocumentStore(db);
     const state = new SceneState({ store });
     state.createToken("tok-m", "scene-1", 0, 0);
 
@@ -51,22 +65,23 @@ it("moveToken persists new position and bumps _rev", () => {
     expect(doc?.system.x).toBe(10);
     expect(doc?.system.y).toBe(20);
     expect(doc?._rev).toBe(1);
-    store.close();
   });
 
   // Paso 9 verification: ownership must survive restart so authorize() stays consistent.
   it("preserves token ownership across server restart", () => {
-    const store1 = new DocumentStore(dbPath);
+    const db1 = openDb();
+    const store1 = new DocumentStore(db1);
     const state1 = new SceneState({ store: store1 });
     state1.createToken("tok-pvt", "scene-1", 0, 0, 1, 1, { "alice": "OWNER" });
     state1.createToken("tok-open", "scene-1", 1, 1);
-    store1.close();
+    db1.close();
+    openDbs.length = 0;
 
-    const store2 = new DocumentStore(dbPath);
+    const db2 = openDb();
+    const store2 = new DocumentStore(db2);
     const state2 = new SceneState({ store: store2 });
     expect(state2.getToken("tok-pvt")?.ownership).toEqual({ alice: "OWNER" });
     expect(state2.getToken("tok-open")?.ownership).toEqual({ default: "LIMITED" });
-    store2.close();
   });
 });
 
@@ -140,7 +155,8 @@ describe("SceneState scenes", () => {
   });
 
   it("scenes persist across server restart", () => {
-    const store1 = new DocumentStore(dbPath);
+    const db1 = openDb();
+    const store1 = new DocumentStore(db1);
     const state1 = new SceneState({ store: store1 });
     state1.createScene("tavern", "The Tavern", {
       width: 5000,
@@ -154,15 +170,16 @@ describe("SceneState scenes", () => {
       background: "#333",
       grid: { size: 80, color: 0xff00ff, type: "hex" },
     });
-    store1.close();
+    db1.close();
+    openDbs.length = 0;
 
-    const store2 = new DocumentStore(dbPath);
+    const db2 = openDb();
+    const store2 = new DocumentStore(db2);
     const state2 = new SceneState({ store: store2 });
     const tavern = state2.getScene("tavern");
     expect(tavern?.system.grid.size).toBe(80);
     expect(tavern?.system.width).toBe(6000);
     expect(tavern?.name).toBe("The Renamed Tavern");
     expect(tavern?._rev).toBe(1);
-    store2.close();
   });
 });

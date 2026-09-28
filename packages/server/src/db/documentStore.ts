@@ -1,4 +1,4 @@
-import Database, { type Database as DB } from "better-sqlite3";
+import type { Database as DB } from "better-sqlite3";
 import type { Document } from "@rollforge/protocol";
 
 const SCHEMA = `
@@ -23,12 +23,11 @@ interface Row {
 }
 
 export class DocumentStore {
+  // shared handle from openWorldDb. Never exposed to consumers.
   private readonly db: DB;
 
-  constructor(path: string) {
-    this.db = new Database(path);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("foreign_keys = ON");
+  constructor(db: DB) {
+    this.db = db;
     this.db.exec(SCHEMA);
   }
 
