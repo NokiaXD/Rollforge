@@ -60,7 +60,8 @@ export function connectSocket(): Socket {
   });
 
   socket.on("tokenCreated", (token: Token) => {
-    upsertToken({ ...token, sceneId: currentSceneId.value });
+    // trust server; if scoping ever breaks, add a sceneId guard here
+    upsertToken(token);
   });
 
   socket.on("chatMessage", (m: ChatMessageEvent) => {
