@@ -75,6 +75,11 @@ export function App() {
         if (background) background.destroy();
         ctx.app.destroy(true, { children: true });
       };
+      if (import.meta.hot) {
+        import.meta.hot.dispose(() => {
+          cleanup?.();
+        });
+      }
     })();
     return () => {
       cleanup?.();
