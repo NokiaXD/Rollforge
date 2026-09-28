@@ -26,7 +26,7 @@ export const currentSceneId = signal<string>("default");
 export const myUserId = signal<string>("");
 export const tokens = signal<Map<string, Token>>(new Map());
 export const locks = signal<Map<string, string>>(new Map());
-// ponytail: brief error banner shown when an intent is rejected. Cleared on next user action.
+// brief error banner shown when an intent is rejected. Cleared on next user action.
 export const lastError = signal<string | null>(null);
 export const focusedTokenId = signal<string | null>(null);
 // Driven by the rendered scene's grid size via the effect below. Tokens read this reactively.

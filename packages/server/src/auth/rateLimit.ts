@@ -1,4 +1,4 @@
-// ponytail: in-memory limiter. Per-process state, lost on restart. Single-server only.
+// in-memory limiter. Per-process state, lost on restart. Single-server only.
 // For multi-instance deploys swap to a Redis-backed counter — same interface.
 
 interface Bucket {

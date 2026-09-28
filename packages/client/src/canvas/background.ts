@@ -44,7 +44,7 @@ export async function drawImageBackground(viewport: Viewport, url: string): Prom
   }
 }
 
-// ponytail: background lives at world (0,0) at native size — grid shares origin so they coincide
+// background lives at world (0,0) at native size — grid shares origin so they coincide
 // automatically when the GM picks the right grid.size. See plan Paso 10 image-upload section.
 export async function drawBackground(
   viewport: Viewport,

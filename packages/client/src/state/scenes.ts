@@ -4,7 +4,7 @@ import { currentSceneId } from "./scene";
 
 export const scenes = signal<Map<string, Scene>>(new Map());
 
-// ponytail: this exists
+// this exists
 // The scene THIS client renders. For GM = their camera; for Player = active scene.
 // Derived from currentSceneId which itself is derived from role (see state/scene.ts).
 export const viewedScene = computed<Scene | null>(() => scenes.value.get(currentSceneId.value) ?? null);

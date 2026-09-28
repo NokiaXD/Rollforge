@@ -2,7 +2,7 @@ export interface UploadResult {
   url: string;
 }
 
-// ponytail: base64-in-JSON avoids pulling multer/busboy for one endpoint.
+// base64-in-JSON avoids pulling multer/busboy for one endpoint.
 // 10MB cap on server side; client-side FileReader handles binary safely.
 export async function uploadImage(file: File): Promise<UploadResult> {
   const data = await new Promise<string>((resolve, reject) => {
