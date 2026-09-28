@@ -1,6 +1,13 @@
 import { io, type Socket } from "socket.io-client";
 import { effect } from "@preact/signals";
-import type { Intent, SceneEvent, SceneSystem } from "@rollforge/protocol";
+import type {
+  ChatHistoryEvent,
+  ChatMessageEvent,
+  Intent,
+  RollActorRef,
+  SceneEvent,
+  SceneSystem,
+} from "@rollforge/protocol";
 import {
   activeSceneId,
   applyEvent,
@@ -12,11 +19,12 @@ import {
   upsertToken,
   type Token,
 } from "../state/scene";
+import { appendMessage, replaceMessages } from "../state/chat";
 
 let socket: Socket | null = null;
 let lastJoinedScene: string | null = null;
 let joinEffectInstalled = false;
-// ponytail: server already broadcasts ActiveSceneChanged on connect; first one seeds gmCameraSceneId
+// server already broadcasts ActiveSceneChanged on connect; first one seeds gmCameraSceneId
 // so the GM opens on the active scene. After that the GM navigates freely via setGmCamera.
 let initialActiveSync = true;
 
@@ -42,7 +50,7 @@ export function connectSocket(): Socket {
     applyEvent(ev);
   });
 
-  // ponytail: surface server rejections — the GmPanel needs to know when a CreateScene
+  // surface server rejections — the GmPanel needs to know when a CreateScene
   // bounces so it can show an error instead of a fake "Scene created" success.
   socket.on("intentRejected", (r: { intent: Intent; reason: string }) => {
     lastError.value = `${r.intent.type}: ${r.reason}`;
@@ -53,6 +61,19 @@ export function connectSocket(): Socket {
 
   socket.on("tokenCreated", (token: Token) => {
     upsertToken({ ...token, sceneId: currentSceneId.value });
+  });
+
+  socket.on("chatMessage", (m: ChatMessageEvent) => {
+    appendMessage(m);
+    // ephemeral server rejections get echoed back to the user through
+    // the same chatMessage socket that we already listen to. Show them inline.
+    if (m.whisperTo === "") {
+      // whisper not handled client-side yet (server resolves username → userId)
+    }
+  });
+
+  socket.on("chatHistory", (h: ChatHistoryEvent) => {
+    replaceMessages(h.messages);
   });
 
   // Sync joinScene/leaveScene with currentSceneId (derived from role).
@@ -109,4 +130,8 @@ export function sendIntent(intent: Intent): void {
 
 export function createTokenRequest(sceneId: string, x: number, y: number): void {
   connectSocket().emit("createToken", { sceneId, x, y });
+}
+
+export function sendChatMessage(text: string, actor?: RollActorRef): void {
+  connectSocket().emit("chatMessage", { text, actor });
 }

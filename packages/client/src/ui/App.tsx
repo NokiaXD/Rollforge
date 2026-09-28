@@ -4,6 +4,7 @@ import { Graphics } from "pixi.js";
 import { authStatus } from "../state/auth";
 import { LoginForm } from "./LoginForm";
 import { Toolbar } from "./Toolbar";
+import { ChatPanel } from "./ChatPanel";
 import { createPixi } from "../canvas/pixiApp";
 import { drawGrid } from "../canvas/grid";
 import { drawBackground, type BackgroundHandle } from "../canvas/background";
@@ -86,6 +87,7 @@ export function App() {
     <>
       <div id="canvas-host" />
       <Toolbar />
+      <ChatPanel />
     </>
   );
 }

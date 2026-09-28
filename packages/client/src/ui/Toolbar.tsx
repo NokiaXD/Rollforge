@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { activeSceneId, currentSceneId, gmCameraSceneId, lastError, locks, tokens } from "../state/scene";
 import { scenes } from "../state/scenes";
 import { currentUser, authStatus } from "../state/auth";
+import { chatOpen, messages } from "../state/chat";
 import { createTokenRequest, setActiveSceneAsGM, setGmCamera } from "../net/socket";
 import { logout } from "../net/auth";
 import { GmPanel } from "./GmPanel";
@@ -77,6 +78,14 @@ export function Toolbar() {
           class="rounded bg-[var(--color-accent)] px-3 py-1 text-xs text-white hover:bg-blue-500"
         >
           + Token
+        </button>
+        <button
+          type="button"
+          onClick={() => (chatOpen.value = !chatOpen.value)}
+          class="rounded border border-white/10 px-2 py-1 text-xs text-[var(--color-muted)] hover:text-white"
+          title="Toggle chat panel"
+        >
+          Chat ({messages.value.length})
         </button>
         <span class="text-[var(--color-muted)]">Tokens: {tokens.value.size}</span>
         <span class="text-[var(--color-muted)]">Bloqueos: {locks.value.size}</span>
