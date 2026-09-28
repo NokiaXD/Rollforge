@@ -5,12 +5,15 @@ import { Server as SocketIOServer } from "socket.io";
 import { attachSync, type SyncDeps } from "./sync/socket";
 import { SceneState } from "./sync/sceneState";
 import { DocumentStore } from "./db/documentStore";
+import { ChatStore } from "./db/chatStore";
+import { openWorldDb } from "./db/connection";
 import { UsersStore } from "./auth/usersStore";
 import { loadJwtSecret, SESSION_COOKIE, verifySession } from "./auth/jwt";
 import { LoginRateLimiter } from "./auth/rateLimit";
 import { authMiddleware, parseCookies } from "./auth/middleware";
 import { createAuthRouter } from "./auth/routes";
 import { createUploadsRouter } from "./uploads";
+import type { Database as DB } from "better-sqlite3";
 
 export interface AuthOpts {
   users?: UsersStore | null;
@@ -24,6 +27,12 @@ export interface RollforgeServerOpts {
   sync?: Partial<SyncDeps>;
   // Pass null to disable world persistence (tests).
   store?: DocumentStore | null;
+  // Paso 11: chat store; pass null to disable chat. If both store and chatStore are
+  // omitted, the server opens a world DB and constructs one DocumentStore + ChatStore
+  // sharing a single better-sqlite3 handle.
+  chatStore?: ChatStore | null;
+  // Optional users store wiring for whisper recipient resolution.
+  users?: UsersStore | null;
   // Pass null to disable auth entirely (tests / pre-Fase-1 dev).
   auth?: AuthOpts | null;
   dataDir?: string;
@@ -35,6 +44,7 @@ export interface RollforgeServer {
   io: SocketIOServer;
   state: SceneState;
   store: DocumentStore | null;
+  chatStore: ChatStore | null;
   users: UsersStore | null;
   close: () => Promise<void>;
 }
@@ -43,7 +53,6 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const app = express();
   const http = createServer(app);
   const io = new SocketIOServer(http, { cors: { origin: true, credentials: true } });
-  const state = new SceneState({ store: opts.store ?? undefined });
 
   app.use(express.json({ limit: "12mb" }));
 
@@ -52,9 +61,32 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const dataDir = opts.dataDir ?? "data";
   const uploadsDir = join(dataDir, "uploads");
 
+  // when callers don't supply either store, auto-build a shared SQLite handle.
+  // If they pass one (or `null`), we use it as-is and skip auto-build — that matches the
+  // test pattern of "make a store from my own db handle" without us fighting for control.
+  let worldDb: DB | null = null;
+  let store: DocumentStore | null;
+  let chatStore: ChatStore | null;
+
+  const autoBuild = opts.store === undefined && opts.chatStore === undefined;
+  if (autoBuild) {
+    const dbPath = join(dataDir, "world.db");
+    worldDb = openWorldDb(dbPath);
+    store = new DocumentStore(worldDb);
+    chatStore = new ChatStore(worldDb);
+  } else {
+    store = opts.store ?? null;
+    chatStore = opts.chatStore ?? null;
+  }
+
+  // Construct the SceneState ONCE. Both the sync layer and `server.state` reference the
+  // same instance so tests can seed tokens/scenes via server.state and the socket
+  // handlers see them live.
+  const state = new SceneState({ store: store ?? undefined });
+
   const users: UsersStore | null = authEnabled
     ? (authCfg.users ?? new UsersStore(`${dataDir}/users.db`))
-    : null;
+    : (opts.users ?? null);
 
   if (authEnabled && users) {
     const secret = authCfg.secret ?? loadJwtSecret(dataDir);
@@ -71,17 +103,16 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
       }),
     );
 
-    // Static serve for uploaded images (referenced by SceneSystem.background).
     app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
 
-    // Resolve socket userId from JWT cookie if present, else fall back to anon (Fase 0 compat).
     io.use((socket, next) => {
       const cookies = parseCookies(socket.handshake.headers.cookie);
       const token = cookies[SESSION_COOKIE];
       const session = token ? verifySession(secret, token) : null;
       socket.data.authSession = session;
       socket.data.role = session?.role ?? null;
+      socket.data.username = session?.sub ?? null;
       next();
     });
 
@@ -89,14 +120,24 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
       state,
       resolveUserId: (socket) => socket.data.authSession?.sub ?? `user-${socket.id}`,
       resolveRole: (socket) => socket.data.role ?? null,
-      // Paso 10: enforce active-scene gate in production. Tests opt out.
+      resolveUsername: (socket) =>
+        socket.data.username ?? socket.data.authSession?.sub ?? `user-${socket.id}`,
       gateSceneActive: true,
+      chatStore,
+      users,
+      documents: store,
       ...authCfg.sync,
     });
   } else {
     app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
-    attachSync(io, { state, ...opts.sync });
+    attachSync(io, {
+      state,
+      users,
+      documents: store,
+      chatStore,
+      ...opts.sync,
+    });
   }
 
   app.get("/api/health", (_req, res) => {
@@ -108,7 +149,8 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     http,
     io,
     state,
-    store: opts.store ?? null,
+    store,
+    chatStore,
     users,
     close: () =>
       new Promise<void>((resolve) => {
@@ -116,6 +158,10 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
         http.close(() => {
           users?.close();
           opts.store?.close();
+          opts.chatStore?.close();
+          // when the server opened its own DB, that handle outlives
+          // the stores and must be closed here.
+          worldDb?.close();
           resolve();
         });
       }),

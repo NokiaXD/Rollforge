@@ -21,7 +21,7 @@ export function createUploadsRouter(opts: UploadsOpts): Router {
   const router = Router();
 
   // Accepts JSON { data: "data:image/png;base64,...", name?: "map.png" }.
-  // ponytail: we base64-in-JSON to avoid pulling multer/busboy. 10MB cap is plenty for maps.
+  // we base64-in-JSON to avoid pulling multer/busboy. 10MB cap is plenty for maps.
   router.post("/", requireAuth, requireGm, (req: Request, res: Response) => {
     const body = (req.body ?? {}) as { data?: unknown; name?: unknown };
     if (typeof body.data !== "string" || !body.data.startsWith("data:image/")) {
