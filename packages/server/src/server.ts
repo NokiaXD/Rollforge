@@ -14,6 +14,12 @@ import { authMiddleware, parseCookies } from "./auth/middleware";
 import { createAuthRouter } from "./auth/routes";
 import { createUploadsRouter } from "./uploads";
 import type { Database as DB } from "better-sqlite3";
+import { ExtensionManager, type ExtensionEntry } from "./extensions/manager";
+import { ChatCommandRegistry } from "./extensions/registry";
+import * as chatDice from "./extensions/builtins/chatDice";
+import { HooksEngine, type ChatSendOptions } from "@rollforge/extension-api";
+import { invocationStorage } from "./sync/invocationContext";
+import type { ChatMessageEvent, Document, RollActor } from "@rollforge/protocol";
 
 export interface AuthOpts {
   users?: UsersStore | null;
@@ -25,17 +31,13 @@ export interface AuthOpts {
 
 export interface RollforgeServerOpts {
   sync?: Partial<SyncDeps>;
-  // Pass null to disable world persistence (tests).
   store?: DocumentStore | null;
-  // Paso 11: chat store; pass null to disable chat. If both store and chatStore are
-  // omitted, the server opens a world DB and constructs one DocumentStore + ChatStore
-  // sharing a single better-sqlite3 handle.
   chatStore?: ChatStore | null;
-  // Optional users store wiring for whisper recipient resolution.
   users?: UsersStore | null;
-  // Pass null to disable auth entirely (tests / pre-Fase-1 dev).
   auth?: AuthOpts | null;
   dataDir?: string;
+  registerBuiltins?: boolean;
+  activationTimeoutMs?: number;
 }
 
 export interface RollforgeServer {
@@ -46,8 +48,12 @@ export interface RollforgeServer {
   store: DocumentStore | null;
   chatStore: ChatStore | null;
   users: UsersStore | null;
+  extensions: ExtensionManager;
+  hooks: HooksEngine;
   close: () => Promise<void>;
 }
+
+const BUILTINS: ExtensionEntry[] = [chatDice];
 
 export function createRollforgeServer(opts: RollforgeServerOpts = {}): RollforgeServer {
   const app = express();
@@ -61,9 +67,6 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const dataDir = opts.dataDir ?? "data";
   const uploadsDir = join(dataDir, "uploads");
 
-  // when callers don't supply either store, auto-build a shared SQLite handle.
-  // If they pass one (or `null`), we use it as-is and skip auto-build — that matches the
-  // test pattern of "make a store from my own db handle" without us fighting for control.
   let worldDb: DB | null = null;
   let store: DocumentStore | null;
   let chatStore: ChatStore | null;
@@ -79,14 +82,152 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     chatStore = opts.chatStore ?? null;
   }
 
-  // Construct the SceneState ONCE. Both the sync layer and `server.state` reference the
-  // same instance so tests can seed tokens/scenes via server.state and the socket
-  // handlers see them live.
   const state = new SceneState({ store: store ?? undefined });
 
   const users: UsersStore | null = authEnabled
     ? (authCfg.users ?? new UsersStore(`${dataDir}/users.db`))
     : (opts.users ?? null);
+
+  const hooks = new HooksEngine();
+  const commandRegistry = new ChatCommandRegistry();
+
+  const extensions = new ExtensionManager({
+    hooks,
+    commandRegistry,
+    activationTimeoutMs: opts.activationTimeoutMs,
+    getUsersAPI: () => ({
+      findByName: (name: string) => {
+        const target = name.trim().toLowerCase();
+        if (!target) return null;
+        const matches = new Map<string, string>();
+        for (const s of io.sockets.sockets.values()) {
+          const d = s.data as { userId?: string; username?: string };
+          if (d.username && d.userId && d.username.toLowerCase() === target) {
+            matches.set(d.userId, d.username);
+          }
+        }
+        if (matches.size === 1) {
+          const [id, username] = matches.entries().next().value!;
+          return { id, name: username };
+        }
+        return null;
+      },
+    }),
+    getDocumentsAPI: () => ({
+      get: async <T extends Document = Document>(id: string) =>
+        (store ? ((store.getById(id) as T | null) ?? null) : null),
+      create: async <T extends Document>(input: Omit<T, "_rev">) => {
+        if (!store) throw new Error("DocumentStore unavailable");
+        return store.save(input as any) as any;
+      },
+      update: async <T extends Document>(id: string, patch: Partial<T>) => {
+        if (!store) throw new Error("DocumentStore unavailable");
+        const existing = store.getById(id);
+        if (!existing) throw new Error(`Document ${id} not found`);
+        return store.update({ ...existing, ...patch } as any, existing._rev) as any;
+      },
+      delete: async (id: string) => {
+        if (!store) throw new Error("DocumentStore unavailable");
+        store.delete(id);
+      },
+    }),
+    getDocumentStore: () => store,
+    getChatSendHandler: () => async (message: string, chatOpts?: ChatSendOptions) => {
+      const current = invocationStorage.getStore();
+      const senderUserId = current?.userId ?? "system";
+      const senderUsername = current?.username ?? "System";
+      const senderRole = current?.role ?? "GM";
+      const now = Date.now();
+
+      if (chatOpts?.kind === "whisper") {
+        let recipientUsername: string | undefined;
+        if (chatOpts.to) {
+          for (const s of io.sockets.sockets.values()) {
+            const d = s.data as { userId?: string; username?: string };
+            if (d.userId === chatOpts.to || d.username === chatOpts.to) {
+              recipientUsername = d.username ?? d.userId;
+              break;
+            }
+          }
+        }
+        const whisperToName = recipientUsername ?? chatOpts.to;
+        const ev: ChatMessageEvent = {
+          type: "ChatMessage",
+          seq: 0,
+          id: `w-${now}-${senderUserId}`,
+          userId: senderUserId,
+          username: senderUsername,
+          role: senderRole,
+          kind: "chat",
+          text: message,
+          createdAt: now,
+          ...(whisperToName ? { whisperTo: whisperToName } : {}),
+        };
+        io.to(`user:${senderUserId}`)
+          .to(`user:${chatOpts.to ?? ""}`)
+          .to(`user:${whisperToName ?? ""}`)
+          .emit("chatMessage", ev);
+        return;
+      }
+
+      if (chatOpts?.kind === "roll") {
+        if (chatStore) {
+          let rollActor: RollActor;
+          if (chatOpts.actor) {
+            rollActor = chatOpts.actor;
+          } else if (current?.actor?.type === "character") {
+            const charDoc = store ? store.getById(current.actor.characterId) : null;
+            rollActor = {
+              type: "character",
+              characterId: current.actor.characterId,
+              name: charDoc?.name ?? "(unknown)",
+            };
+          } else {
+            rollActor = {
+              type: "user",
+              userId: senderUserId,
+              name: senderUsername,
+            };
+          }
+
+          const ev = chatStore.append({
+            userId: senderUserId,
+            username: senderUsername,
+            role: senderRole,
+            kind: "roll",
+            text: message,
+            rolls: chatOpts.rolls ?? chatOpts.result?.terms?.map((t: any) => t.roll),
+            result: chatOpts.result,
+            actor: rollActor,
+            createdAt: now,
+          });
+          io.to("world").emit("chatMessage", ev);
+        }
+        return;
+      }
+
+      if (chatStore) {
+        const ev = chatStore.append({
+          userId: senderUserId,
+          username: senderUsername,
+          role: senderRole,
+          kind: "chat",
+          text: message,
+          createdAt: now,
+        });
+        io.to("world").emit("chatMessage", ev);
+      }
+    },
+  });
+
+  const shouldRegisterBuiltins = opts.registerBuiltins ?? true;
+  if (shouldRegisterBuiltins) {
+    for (const b of BUILTINS) {
+      extensions.registerExtension(b);
+    }
+  }
+
+  void extensions.dispatchActivationEvent("onReady");
 
   if (authEnabled && users) {
     const secret = authCfg.secret ?? loadJwtSecret(dataDir);
@@ -126,6 +267,8 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
       chatStore,
       users,
       documents: store,
+      extensionManager: extensions,
+      hooks,
       ...authCfg.sync,
     });
   } else {
@@ -136,6 +279,8 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
       users,
       documents: store,
       chatStore,
+      extensionManager: extensions,
+      hooks,
       ...opts.sync,
     });
   }
@@ -152,19 +297,24 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     store,
     chatStore,
     users,
-    close: () =>
-      new Promise<void>((resolve) => {
+    extensions,
+    hooks,
+    close: async () => {
+      const allExts = Array.from(extensions["extensions"].keys());
+      for (const id of allExts) {
+        await extensions.deactivateExtension(id);
+      }
+      return new Promise<void>((resolve) => {
         io.close();
         http.close(() => {
           users?.close();
           opts.store?.close();
           opts.chatStore?.close();
-          // when the server opened its own DB, that handle outlives
-          // the stores and must be closed here.
           worldDb?.close();
           resolve();
         });
-      }),
+      });
+    },
   };
 }
 

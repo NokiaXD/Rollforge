@@ -11,39 +11,32 @@ import type {
   SceneDeletedEvent,
   SceneUpdatedEvent,
   TokenPositionDiff,
-  RollActor,
   RollActorRef,
+  PreChatMessagePayload,
 } from "@rollforge/protocol";
 import type { SceneState, TokenRecord } from "./sceneState";
 import type { ChatStore } from "../db/chatStore";
 import type { DocumentStore } from "../db/documentStore";
-import { authorize, authorizeAction, canRollAsCharacter } from "../security/authorize";
-import { resolveChatMessage, type ChatResolution } from "../chat/resolve";
-import { rollDice, validateDice, MAX_LEN_MESSAGE, HISTORY_PAGE } from "../dice/adapter";
+import { authorize, authorizeAction } from "../security/authorize";
+import { resolveChatMessage } from "../chat/resolve";
+import { MAX_LEN_MESSAGE, HISTORY_PAGE } from "../dice/adapter";
 import type { UsersStore } from "../auth/usersStore";
+import type { ExtensionManager } from "../extensions/manager";
+import { CommandRejection, type HooksEngine } from "@rollforge/extension-api";
+import { invocationStorage } from "./invocationContext";
 
 export interface SyncDeps {
   state: SceneState;
-  // identity comes from Fase 1 (auth + JWT). For Fase 0 we mint from socket.id.
   resolveUserId?: (socket: Socket) => string;
-  // resolveRole returns "GM" | "Player" | null. Default: socket.data.role ?? null.
   resolveRole?: (socket: Socket) => "GM" | "Player" | null;
-  // username comes from the auth session. For Fase 0 / disabled auth, falls back to userId.
   resolveUsername?: (socket: Socket) => string;
-  // per-client throttle cap on inbound MoveToken intents (Hz). 0 = disabled.
   moveHzCap?: number;
-  // Paso 10: when true, non-GM intents targeting a sceneId != state.activeSceneId
-  // are rejected with reason: "not-in-active-scene". Production server opts in;
-  // unit tests opt out so they can target arbitrary scenes.
   gateSceneActive?: boolean;
-  // Paso 11: chat persistence.
   chatStore: ChatStore | null;
-  // Paso 11: username → userId resolution for whispers. Optional — when absent,
-  // whispers fall back to rejecting with `not-found`.
   users?: UsersStore | null;
-  // Paso 11: document store, used to look up the actor's character and verify
-  // userId can roll on their behalf.
   documents?: DocumentStore | null;
+  extensionManager?: ExtensionManager;
+  hooks?: HooksEngine;
 }
 
 interface ClientMoveBucket {
@@ -56,7 +49,6 @@ interface ChatBucket {
   lastRefill: number;
 }
 
-// simple token bucket. 5 msg/s sustained, allows small bursts up to bucket cap.
 const CHAT_RATE_CAP = 5;
 const CHAT_RATE_INTERVAL_MS = 1000;
 
@@ -87,6 +79,8 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
     chatStore,
     users = null,
     documents = null,
+    extensionManager,
+    hooks,
   } = deps;
   const moveBuckets = new Map<string, ClientMoveBucket>();
   const chatBuckets = new Map<string, ChatBucket>();
@@ -100,11 +94,10 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
     socket.data.role = role;
     socket.data.username = username;
 
-    // order matters. Both joins are synchronous so chatHistory is the first
-    // thing this client sees — a chatMessage arriving on a parallel connection cannot
-    // interleave before the history replacement.
     socket.join("world");
     socket.join(`user:${userId}`);
+    socket.join(`user:${username}`);
+
     if (chatStore) {
       const messages = chatStore.recent(HISTORY_PAGE);
       const history: ChatHistoryEvent = { type: "ChatHistory", messages };
@@ -138,8 +131,6 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
 
     socket.on("createToken", (payload: { sceneId: string; x?: number; y?: number; w?: number; h?: number }) => {
       if (!payload || typeof payload.sceneId !== "string") return;
-      // gate only. Client doesn't listen to createToken rejections today;
-      // silent drop is fine. Add a createTokenRejected event if a UI ever needs it.
       if (gateSceneActive && !isGM && payload.sceneId !== state.getActiveSceneId()) return;
       const id = `tok-${Math.random().toString(36).slice(2, 10)}`;
       const token = state.createToken(id, payload.sceneId, payload.x ?? 0, payload.y ?? 0, payload.w ?? 1, payload.h ?? 1);
@@ -149,15 +140,26 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
     socket.on("intent", (intent: Intent) => {
       if (intent.type === "SendChatMessage") {
         if (!chatStore) return;
-        processChat(io, socket, {
-          userId,
-          username,
-          role: role ?? "Player",
-          isGM,
-        }, chatStore, chatBuckets, users, documents, {
-          text: intent.text,
-          ...(intent.actor !== undefined ? { actor: intent.actor } : {}),
-        });
+        void processChat(
+          io,
+          socket,
+          {
+            userId,
+            username,
+            role: role ?? "Player",
+            isGM,
+          },
+          chatStore,
+          chatBuckets,
+          users,
+          documents,
+          {
+            text: intent.text,
+            ...(intent.actor !== undefined ? { actor: intent.actor } : {}),
+          },
+          extensionManager,
+          hooks
+        );
         return;
       }
       handleIntent(io, state, socket, userId, isGM, intent, moveBuckets, moveHzCap, gateSceneActive);
@@ -165,12 +167,23 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
 
     if (chatStore) {
       socket.on("chatMessage", (payload: { text: string; actor?: RollActorRef }) => {
-        processChat(io, socket, {
-          userId,
-          username,
-          role: role ?? "Player",
-          isGM,
-        }, chatStore, chatBuckets, users, documents, payload);
+        void processChat(
+          io,
+          socket,
+          {
+            userId,
+            username,
+            role: role ?? "Player",
+            isGM,
+          },
+          chatStore,
+          chatBuckets,
+          users,
+          documents,
+          payload,
+          extensionManager,
+          hooks
+        );
       });
     }
 
@@ -197,105 +210,118 @@ interface ChatSender {
   isGM: boolean;
 }
 
-function processChat(
+async function processChat(
   io: SocketIOServer,
   socket: Socket,
   sender: ChatSender,
   chatStore: ChatStore,
   buckets: Map<string, ChatBucket>,
-  users: UsersStore | null,
-  documents: DocumentStore | null,
+  _users: UsersStore | null,
+  _documents: DocumentStore | null,
   payload: { text: string; actor?: RollActorRef },
-): void {
-  const text = typeof payload?.text === "string" ? payload.text : "";
+  extensionManager?: ExtensionManager,
+  hooks?: HooksEngine,
+): Promise<void> {
+  const rawText = typeof payload?.text === "string" ? payload.text : "";
   if (!authorizeAction(sender.userId, "SendChatMessage", sender.isGM)) {
-    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "forbidden" });
+    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text: rawText }, reason: "forbidden" });
     return;
   }
   const now = Date.now();
   if (!consumeChatToken(buckets, sender.userId, now)) {
-    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "rate-limit" });
+    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text: rawText }, reason: "rate-limit" });
     return;
   }
-  const resolution = resolveChatMessage(text, { limits: { maxLen: MAX_LEN_MESSAGE } });
-  switch (resolution.kind) {
-    case "reject":
-      socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: resolution.reason });
-      return;
-    case "chat": {
-      const ev = chatStore.append({
-        userId: sender.userId,
-        username: sender.username,
-        role: sender.role,
-        kind: "chat",
-        text: resolution.text,
-        createdAt: now,
-      });
-      io.to("world").emit("chatMessage", ev);
+
+  let text = rawText;
+  if (hooks) {
+    const prePayload: PreChatMessagePayload = {
+      text: rawText,
+      userId: sender.userId,
+      isGM: sender.isGM,
+    };
+    const filtered = await hooks.runFilter("preChatMessage", prePayload);
+    if (filtered === null) {
       return;
     }
-    case "whisper": {
-      const recipient = users?.getByUsername(resolution.recipientUsername);
-      if (!recipient) {
-        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "not-found" });
-        return;
-      }
-      const ev: ChatMessageEvent = {
-        type: "ChatMessage",
-        seq: 0,
-        id: `w-${now}-${sender.userId}`,
-        userId: sender.userId,
-        username: sender.username,
-        role: sender.role,
-        kind: "chat",
-        text: resolution.text,
-        whisperTo: recipient.username,
-        createdAt: now,
-      };
-      io.to(`user:${sender.userId}`).to(`user:${recipient.username}`).emit("chatMessage", ev);
-      return;
-    }
-    case "roll": {
-      const valid = validateDice(resolution.notation);
-      if (!valid.ok) {
-        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: valid.reason });
-        return;
-      }
-      let result;
-      try {
-        result = rollDice(resolution.notation);
-      } catch {
-        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "bad-notation" });
-        return;
-      }
-      const requestedActor = payload.actor ?? resolution.actor;
-      let actor: RollActor;
-      if (requestedActor?.type === "character") {
-        const charDoc = documents?.getById(requestedActor.characterId) ?? null;
-        if (!canRollAsCharacter(sender.userId, charDoc, sender.isGM)) {
-          socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "forbidden" });
-          return;
-        }
-        const name = charDoc?.name ?? "(unknown)";
-        actor = { type: "character", characterId: requestedActor.characterId, name };
-      } else {
-        actor = { type: "user", userId: sender.userId, name: sender.username };
-      }
-      const ev = chatStore.append({
-        userId: sender.userId,
-        username: sender.username,
-        role: sender.role,
-        kind: "roll",
-        text: resolution.text,
-        rolls: result.terms.map((t) => t.roll),
-        result,
-        actor,
-        createdAt: now,
-      });
-      io.to("world").emit("chatMessage", ev);
-      return;
-    }
+    text = filtered.text;
   }
+
+  const resolution = resolveChatMessage(text, { limits: { maxLen: MAX_LEN_MESSAGE } });
+  if ("kind" in resolution) {
+    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: resolution.reason });
+    return;
+  }
+
+  if (resolution.command) {
+    const cmdName = resolution.command;
+    const contributed = extensionManager?.getContributedCommand(cmdName);
+    const registered = extensionManager?.commandRegistry.get(cmdName);
+    if (!contributed && !registered) {
+      socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "not-a-command" });
+      return;
+    }
+
+    if (extensionManager && !extensionManager.canInvoke(cmdName, sender.role)) {
+      socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "forbidden" });
+      return;
+    }
+
+    const extensionId = contributed?.extensionId ?? registered?.extensionId;
+    if (extensionManager && extensionId) {
+      try {
+        await extensionManager.ensureActivated(extensionId);
+      } catch {
+        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "extension-unavailable" });
+        return;
+      }
+    }
+
+    const activeCmd = extensionManager?.commandRegistry.get(cmdName);
+    if (!activeCmd) {
+      socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "extension-unavailable" });
+      return;
+    }
+
+    try {
+      await invocationStorage.run(
+        {
+          userId: sender.userId,
+          username: sender.username,
+          role: sender.role,
+          isGM: sender.isGM,
+          ...(payload.actor !== undefined ? { actor: payload.actor } : {}),
+        },
+        async () => {
+          await activeCmd.handler(
+            { args: resolution.args, rest: resolution.rest },
+            { userId: sender.userId, isGM: sender.isGM }
+          );
+        }
+      );
+    } catch (err: any) {
+      if (
+        err instanceof CommandRejection ||
+        (err && (err.name === "CommandRejection" || err.constructor?.name === "CommandRejection"))
+      ) {
+        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: err.reason });
+      } else {
+        console.error(`[extension:${activeCmd.extensionId}] command "${cmdName}" failed:`, err);
+        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "command-failed" });
+      }
+    }
+    return;
+  }
+
+  const ev = chatStore.append({
+    userId: sender.userId,
+    username: sender.username,
+    role: sender.role,
+    kind: "chat",
+    text: resolution.rest,
+    createdAt: now,
+  });
+  io.to("world").emit("chatMessage", ev);
 }
 
 function handleIntent(
@@ -320,7 +346,10 @@ function handleIntent(
         return;
       }
       state.setActiveSceneId(intent.sceneId);
-      const ev: ActiveSceneChangedEvent = { type: "ActiveSceneChanged", sceneId: intent.sceneId };
+      const ev: ActiveSceneChangedEvent = {
+        type: "ActiveSceneChanged",
+        sceneId: intent.sceneId,
+      };
       io.emit("event", ev);
       return;
     }
@@ -329,24 +358,22 @@ function handleIntent(
         socket.emit("intentRejected", { intent, reason: "forbidden" });
         return;
       }
-      if (typeof intent.sceneId !== "string" || !intent.sceneId || !intent.system) {
+      if (typeof intent.sceneId !== "string" || !intent.sceneId) {
         socket.emit("intentRejected", { intent, reason: "invalid" });
         return;
       }
       const name = typeof intent.name === "string" && intent.name.trim() ? intent.name.trim() : intent.sceneId;
-      let doc;
-      try {
-        doc = state.createScene(intent.sceneId, name, intent.system);
-      } catch {
+      const created = state.createScene(intent.sceneId, name, intent.system);
+      if (!created) {
         socket.emit("intentRejected", { intent, reason: "conflict" });
         return;
       }
       const ev: SceneCreatedEvent = {
         type: "SceneCreated",
-        sceneId: doc.id,
-        name: doc.name,
-        system: doc.system,
-        _rev: doc._rev,
+        sceneId: created.id,
+        name: created.name,
+        system: created.system,
+        _rev: created._rev,
       };
       io.emit("event", ev);
       return;
@@ -356,7 +383,7 @@ function handleIntent(
         socket.emit("intentRejected", { intent, reason: "forbidden" });
         return;
       }
-      if (typeof intent.sceneId !== "string" || !intent.system) {
+      if (typeof intent.sceneId !== "string" || !intent.sceneId) {
         socket.emit("intentRejected", { intent, reason: "invalid" });
         return;
       }
@@ -479,13 +506,11 @@ function handleIntent(
       return;
     }
     case "SendChatMessage": {
-      // unreachable: the intent dispatcher short-circuits this branch.
       return;
     }
   }
 }
 
-// 1Hz-window bucket — coarse but enough to cap a runaway client.
 function consumeBucket(buckets: Map<string, ClientMoveBucket>, userId: string, cap: number): boolean {
   const now = Date.now();
   let bucket = buckets.get(userId);
