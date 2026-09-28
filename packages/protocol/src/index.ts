@@ -1,3 +1,4 @@
+export * from "./dice";
 export * from "./documents";
 export * from "./messages";
 export * from "./hooks";

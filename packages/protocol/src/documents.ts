@@ -1,3 +1,5 @@
+import type { DiceResult, DiceRoll, RollActor, RollActorRef } from "./dice";
+
 export type OwnershipLevel = "NONE" | "LIMITED" | "OBSERVER" | "OWNER";
 
 export interface Document<TSystem = Record<string, unknown>> {
@@ -60,7 +62,7 @@ export interface SetActiveSceneIntent {
 export interface CreateSceneIntent {
   type: "CreateScene";
   sceneId: string;
-  // ponytail: human-readable label. Defaults to sceneId on the server if empty.
+  // human-readable label. Defaults to sceneId on the server if empty.
   name: string;
   system: SceneSystem;
 }
@@ -77,6 +79,12 @@ export interface DeleteSceneIntent {
   sceneId: string;
 }
 
+export interface SendChatMessageIntent {
+  type: "SendChatMessage";
+  text: string;
+  actor?: RollActorRef;
+}
+
 export type Intent =
   | MoveTokenIntent
   | AcquireDragLockIntent
@@ -84,7 +92,8 @@ export type Intent =
   | SetActiveSceneIntent
   | CreateSceneIntent
   | UpdateSceneIntent
-  | DeleteSceneIntent;
+  | DeleteSceneIntent
+  | SendChatMessageIntent;
 
 export interface TokenPositionDiff {
   type: "TokenPositionDiff";
@@ -134,6 +143,27 @@ export interface SceneDeletedEvent {
   sceneId: string;
 }
 
+export interface ChatMessageEvent {
+  type: "ChatMessage";
+  seq: number;
+  id: string;
+  userId: string;
+  username: string;
+  role: "GM" | "Player";
+  kind: "chat" | "roll";
+  text: string;
+  rolls?: DiceRoll[];
+  result?: DiceResult;
+  actor?: RollActor;
+  whisperTo?: string;
+  createdAt: number;
+}
+
+export interface ChatHistoryEvent {
+  type: "ChatHistory";
+  messages: ChatMessageEvent[];
+}
+
 export type SceneEvent =
   | TokenPositionDiff
   | DragLockAcquiredEvent
@@ -141,4 +171,6 @@ export type SceneEvent =
   | ActiveSceneChangedEvent
   | SceneCreatedEvent
   | SceneUpdatedEvent
-  | SceneDeletedEvent;
+  | SceneDeletedEvent
+  | ChatMessageEvent
+  | ChatHistoryEvent;
