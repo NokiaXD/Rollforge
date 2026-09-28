@@ -203,6 +203,7 @@ export class SceneState {
     y: number,
     expectedRev: number,
   ): TokenRecord | null {
+    this.expireLocks();
     const token = this.tokens.get(tokenId);
     if (!token) return null;
     if (token._rev !== expectedRev) return null;

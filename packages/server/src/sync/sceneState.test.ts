@@ -67,6 +67,27 @@ it("moveToken persists new position and bumps _rev", () => {
     expect(doc?._rev).toBe(1);
   });
 
+  it("rejects moveToken on stale _rev or when locked by another user", () => {
+    const db = openDb();
+    const store = new DocumentStore(db);
+    const state = new SceneState({ store });
+    state.createToken("tok-stale", "scene-1", 0, 0);
+
+    // Initial move succeeds: _rev becomes 1
+    const moved = state.moveToken("tok-stale", "alice", 1, 1, 0);
+    expect(moved?._rev).toBe(1);
+
+    // Stale _rev rejected: passes expectedRev 0 when current is 1
+    const stale = state.moveToken("tok-stale", "alice", 2, 2, 0);
+    expect(stale).toBeNull();
+    expect(state.getToken("tok-stale")?._rev).toBe(1);
+
+    // Locked by another user rejected
+    state.acquireLock("tok-stale", "bob");
+    const locked = state.moveToken("tok-stale", "alice", 3, 3, 1);
+    expect(locked).toBeNull();
+  });
+
   // Paso 9 verification: ownership must survive restart so authorize() stays consistent.
   it("preserves token ownership across server restart", () => {
     const db1 = openDb();
