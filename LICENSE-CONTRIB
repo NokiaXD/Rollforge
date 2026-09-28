@@ -1,0 +1,29 @@
+Contributed Extensions License (GPL-3.0-or-later)
+
+This file applies to all extensions contributed to the Rollforge project
+under `packages/server/src/extensions/builtins/`, and to any future
+extension folders explicitly marked as "contributed" rather than
+third-party.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Such extensions are free software: you can redistribute them and/or modify
+them under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+These extensions are distributed in the hope that they will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with these extensions. If not, see <https://www.gnu.org/licenses/gpl-3.0.txt>
+or write to the Free Software Foundation, Inc.,
+51 F Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Rationale: extensions that ship in-tree are part of the platform's
+capability surface. Keeping them under a copyleft license ensures that
+improvements to the contributed set stay open for the community to learn
+from and extend. Third-party extensions installed by users are NOT bound by
+this license — only those bundled in this repository.
