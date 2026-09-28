@@ -210,6 +210,7 @@ interface ChatSender {
   isGM: boolean;
 }
 
+//defer extracting processChat to packages/server/src/chat/process.ts until 2+ command-dispatch paths exist or it exceeds ~180 lines.
 async function processChat(
   io: SocketIOServer,
   socket: Socket,
@@ -300,10 +301,7 @@ async function processChat(
         }
       );
     } catch (err: any) {
-      if (
-        err instanceof CommandRejection ||
-        (err && (err.name === "CommandRejection" || err.constructor?.name === "CommandRejection"))
-      ) {
+      if (err instanceof CommandRejection) {
         socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: err.reason });
       } else {
         console.error(`[extension:${activeCmd.extensionId}] command "${cmdName}" failed:`, err);
@@ -523,6 +521,7 @@ function consumeBucket(buckets: Map<string, ClientMoveBucket>, userId: string, c
   return true;
 }
 
+// authorize() only reads doc.ownership; defer trimming tokenOwnershipDoc synthetic fields until authorize signature grows.
 function tokenOwnershipDoc(token: TokenRecord): Document<unknown> {
   return {
     id: token.id,
