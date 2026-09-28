@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@dice-roller/rpg-dice-roller": "^5.5.1",
     "@node-rs/argon2": "^2.0.2",
     "@rollforge/extension-api": "workspace:*",
     "@rollforge/protocol": "workspace:*",
