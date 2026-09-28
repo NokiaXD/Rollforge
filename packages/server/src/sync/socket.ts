@@ -1,6 +1,8 @@
 import type { Server as SocketIOServer, Socket } from "socket.io";
 import type {
   ActiveSceneChangedEvent,
+  ChatHistoryEvent,
+  ChatMessageEvent,
   Document,
   DragLockAcquiredEvent,
   DragLockReleasedEvent,
@@ -9,9 +11,16 @@ import type {
   SceneDeletedEvent,
   SceneUpdatedEvent,
   TokenPositionDiff,
+  RollActor,
+  RollActorRef,
 } from "@rollforge/protocol";
-import { SceneState, type TokenRecord } from "./sceneState";
-import { authorize } from "../security/authorize";
+import type { SceneState, TokenRecord } from "./sceneState";
+import type { ChatStore } from "../db/chatStore";
+import type { DocumentStore } from "../db/documentStore";
+import { authorize, authorizeAction, canRollAsCharacter } from "../security/authorize";
+import { resolveChatMessage, type ChatResolution } from "../chat/resolve";
+import { rollDice, validateDice, MAX_LEN_MESSAGE, HISTORY_PAGE } from "../dice/adapter";
+import type { UsersStore } from "../auth/usersStore";
 
 export interface SyncDeps {
   state: SceneState;
@@ -19,12 +28,22 @@ export interface SyncDeps {
   resolveUserId?: (socket: Socket) => string;
   // resolveRole returns "GM" | "Player" | null. Default: socket.data.role ?? null.
   resolveRole?: (socket: Socket) => "GM" | "Player" | null;
+  // username comes from the auth session. For Fase 0 / disabled auth, falls back to userId.
+  resolveUsername?: (socket: Socket) => string;
   // per-client throttle cap on inbound MoveToken intents (Hz). 0 = disabled.
   moveHzCap?: number;
   // Paso 10: when true, non-GM intents targeting a sceneId != state.activeSceneId
   // are rejected with reason: "not-in-active-scene". Production server opts in;
   // unit tests opt out so they can target arbitrary scenes.
   gateSceneActive?: boolean;
+  // Paso 11: chat persistence.
+  chatStore: ChatStore | null;
+  // Paso 11: username → userId resolution for whispers. Optional — when absent,
+  // whispers fall back to rejecting with `not-found`.
+  users?: UsersStore | null;
+  // Paso 11: document store, used to look up the actor's character and verify
+  // userId can roll on their behalf.
+  documents?: DocumentStore | null;
 }
 
 interface ClientMoveBucket {
@@ -32,20 +51,70 @@ interface ClientMoveBucket {
   count: number;
 }
 
+interface ChatBucket {
+  tokens: number;
+  lastRefill: number;
+}
+
+// simple token bucket. 5 msg/s sustained, allows small bursts up to bucket cap.
+const CHAT_RATE_CAP = 5;
+const CHAT_RATE_INTERVAL_MS = 1000;
+
+function consumeChatToken(buckets: Map<string, ChatBucket>, userId: string, now: number): boolean {
+  let b = buckets.get(userId);
+  if (!b) {
+    b = { tokens: CHAT_RATE_CAP, lastRefill: now };
+    buckets.set(userId, b);
+  }
+  const elapsed = now - b.lastRefill;
+  if (elapsed >= CHAT_RATE_INTERVAL_MS) {
+    b.tokens = CHAT_RATE_CAP;
+    b.lastRefill = now;
+  }
+  if (b.tokens <= 0) return false;
+  b.tokens -= 1;
+  return true;
+}
+
 export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
-  const { state, resolveUserId, resolveRole, moveHzCap = 0, gateSceneActive = false } = deps;
+  const {
+    state,
+    resolveUserId,
+    resolveRole,
+    resolveUsername,
+    moveHzCap = 0,
+    gateSceneActive = false,
+    chatStore,
+    users = null,
+    documents = null,
+  } = deps;
   const moveBuckets = new Map<string, ClientMoveBucket>();
+  const chatBuckets = new Map<string, ChatBucket>();
 
   io.on("connection", (socket) => {
     const userId = resolveUserId ? resolveUserId(socket) : `user-${socket.id}`;
     const role = resolveRole ? resolveRole(socket) : (socket.data.role ?? null);
     const isGM = role === "GM";
+    const username = resolveUsername ? resolveUsername(socket) : userId;
     socket.data.userId = userId;
     socket.data.role = role;
-    socket.emit("you", { userId, role });
-    // Tell the new client what the active scene is so it can auto-join.
-    socket.emit("event", { type: "ActiveSceneChanged", sceneId: state.getActiveSceneId() } satisfies ActiveSceneChangedEvent);
-    // Replay existing scenes so the client can populate its scene list / dropdown.
+    socket.data.username = username;
+
+    // order matters. Both joins are synchronous so chatHistory is the first
+    // thing this client sees — a chatMessage arriving on a parallel connection cannot
+    // interleave before the history replacement.
+    socket.join("world");
+    socket.join(`user:${userId}`);
+    if (chatStore) {
+      const messages = chatStore.recent(HISTORY_PAGE);
+      const history: ChatHistoryEvent = { type: "ChatHistory", messages };
+      socket.emit("chatHistory", history);
+    }
+    socket.emit("you", { userId, role, username });
+    socket.emit("event", {
+      type: "ActiveSceneChanged",
+      sceneId: state.getActiveSceneId(),
+    } satisfies ActiveSceneChangedEvent);
     for (const scene of state.listScenes()) {
       socket.emit("event", {
         type: "SceneCreated",
@@ -69,7 +138,7 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
 
     socket.on("createToken", (payload: { sceneId: string; x?: number; y?: number; w?: number; h?: number }) => {
       if (!payload || typeof payload.sceneId !== "string") return;
-      // ponytail: gate only. Client doesn't listen to createToken rejections today;
+      // gate only. Client doesn't listen to createToken rejections today;
       // silent drop is fine. Add a createTokenRejected event if a UI ever needs it.
       if (gateSceneActive && !isGM && payload.sceneId !== state.getActiveSceneId()) return;
       const id = `tok-${Math.random().toString(36).slice(2, 10)}`;
@@ -78,8 +147,32 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
     });
 
     socket.on("intent", (intent: Intent) => {
+      if (intent.type === "SendChatMessage") {
+        if (!chatStore) return;
+        processChat(io, socket, {
+          userId,
+          username,
+          role: role ?? "Player",
+          isGM,
+        }, chatStore, chatBuckets, users, documents, {
+          text: intent.text,
+          ...(intent.actor !== undefined ? { actor: intent.actor } : {}),
+        });
+        return;
+      }
       handleIntent(io, state, socket, userId, isGM, intent, moveBuckets, moveHzCap, gateSceneActive);
     });
+
+    if (chatStore) {
+      socket.on("chatMessage", (payload: { text: string; actor?: RollActorRef }) => {
+        processChat(io, socket, {
+          userId,
+          username,
+          role: role ?? "Player",
+          isGM,
+        }, chatStore, chatBuckets, users, documents, payload);
+      });
+    }
 
     socket.on("disconnect", () => {
       const released = state.releaseAllFor(userId);
@@ -92,8 +185,117 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
         io.emit("event", ev);
       }
       moveBuckets.delete(userId);
+      chatBuckets.delete(userId);
     });
   });
+}
+
+interface ChatSender {
+  userId: string;
+  username: string;
+  role: "GM" | "Player";
+  isGM: boolean;
+}
+
+function processChat(
+  io: SocketIOServer,
+  socket: Socket,
+  sender: ChatSender,
+  chatStore: ChatStore,
+  buckets: Map<string, ChatBucket>,
+  users: UsersStore | null,
+  documents: DocumentStore | null,
+  payload: { text: string; actor?: RollActorRef },
+): void {
+  const text = typeof payload?.text === "string" ? payload.text : "";
+  if (!authorizeAction(sender.userId, "SendChatMessage", sender.isGM)) {
+    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "forbidden" });
+    return;
+  }
+  const now = Date.now();
+  if (!consumeChatToken(buckets, sender.userId, now)) {
+    socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "rate-limit" });
+    return;
+  }
+  const resolution = resolveChatMessage(text, { limits: { maxLen: MAX_LEN_MESSAGE } });
+  switch (resolution.kind) {
+    case "reject":
+      socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: resolution.reason });
+      return;
+    case "chat": {
+      const ev = chatStore.append({
+        userId: sender.userId,
+        username: sender.username,
+        role: sender.role,
+        kind: "chat",
+        text: resolution.text,
+        createdAt: now,
+      });
+      io.to("world").emit("chatMessage", ev);
+      return;
+    }
+    case "whisper": {
+      const recipient = users?.getByUsername(resolution.recipientUsername);
+      if (!recipient) {
+        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "not-found" });
+        return;
+      }
+      const ev: ChatMessageEvent = {
+        type: "ChatMessage",
+        seq: 0,
+        id: `w-${now}-${sender.userId}`,
+        userId: sender.userId,
+        username: sender.username,
+        role: sender.role,
+        kind: "chat",
+        text: resolution.text,
+        whisperTo: recipient.username,
+        createdAt: now,
+      };
+      io.to(`user:${sender.userId}`).to(`user:${recipient.username}`).emit("chatMessage", ev);
+      return;
+    }
+    case "roll": {
+      const valid = validateDice(resolution.notation);
+      if (!valid.ok) {
+        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: valid.reason });
+        return;
+      }
+      let result;
+      try {
+        result = rollDice(resolution.notation);
+      } catch {
+        socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "bad-notation" });
+        return;
+      }
+      const requestedActor = payload.actor ?? resolution.actor;
+      let actor: RollActor;
+      if (requestedActor?.type === "character") {
+        const charDoc = documents?.getById(requestedActor.characterId) ?? null;
+        if (!canRollAsCharacter(sender.userId, charDoc, sender.isGM)) {
+          socket.emit("intentRejected", { intent: { type: "SendChatMessage", text }, reason: "forbidden" });
+          return;
+        }
+        const name = charDoc?.name ?? "(unknown)";
+        actor = { type: "character", characterId: requestedActor.characterId, name };
+      } else {
+        actor = { type: "user", userId: sender.userId, name: sender.username };
+      }
+      const ev = chatStore.append({
+        userId: sender.userId,
+        username: sender.username,
+        role: sender.role,
+        kind: "roll",
+        text: resolution.text,
+        rolls: result.terms.map((t) => t.roll),
+        result,
+        actor,
+        createdAt: now,
+      });
+      io.to("world").emit("chatMessage", ev);
+      return;
+    }
+  }
 }
 
 function handleIntent(
@@ -190,7 +392,6 @@ function handleIntent(
       }
       const ev: SceneDeletedEvent = { type: "SceneDeleted", sceneId: intent.sceneId };
       io.emit("event", ev);
-      // If we deleted the active scene, fall back to "default" (always exists).
       if (state.getActiveSceneId() === intent.sceneId) {
         state.setActiveSceneId("default");
         const fallback: ActiveSceneChangedEvent = { type: "ActiveSceneChanged", sceneId: "default" };
@@ -275,6 +476,10 @@ function handleIntent(
         _rev: updated._rev,
       };
       io.to(`scene:${intent.sceneId}`).emit("event", diff);
+      return;
+    }
+    case "SendChatMessage": {
+      // unreachable: the intent dispatcher short-circuits this branch.
       return;
     }
   }

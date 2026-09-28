@@ -67,7 +67,7 @@ describe("sync socket integration", () => {
   let bob: ClientHandle;
 
   beforeEach(async () => {
-    server = createRollforgeServer({ auth: null });
+    server = createRollforgeServer({ auth: null, store: null, chatStore: null });
     port = await listen(server, 0);
     [alice, bob] = await Promise.all([connect(port), connect(port)]);
   });
@@ -252,6 +252,8 @@ describe("Paso 10 — camera of the GM", () => {
   beforeEach(async () => {
     server = createRollforgeServer({
       auth: null,
+      store: null,
+      chatStore: null,
       sync: {
         resolveRole: (socket) => ((socket.handshake.auth as { role?: "GM" | "Player" })?.role ?? "Player"),
         gateSceneActive: true,
