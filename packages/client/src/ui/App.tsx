@@ -9,7 +9,7 @@ import { createPixi } from "../canvas/pixiApp";
 import { drawGrid } from "../canvas/grid";
 import { drawBackground, type BackgroundHandle } from "../canvas/background";
 import { SceneRenderer } from "../canvas/sceneRenderer";
-import { connectSocket, sendIntent } from "../net/socket";
+import { connectSocket, disconnectSocket, sendIntent } from "../net/socket";
 import { viewedScene } from "../state/scenes";
 
 export function App() {
@@ -17,11 +17,16 @@ export function App() {
 
   useEffect(() => {
     if (status !== "authenticated") return;
+    let isCancelled = false;
     let cleanup: (() => void) | undefined;
     void (async () => {
       const host = document.getElementById("canvas-host");
       if (!host) return;
       const ctx = await createPixi(host);
+      if (isCancelled) {
+        ctx.destroy();
+        return;
+      }
       let grid: Graphics | null = null;
       let bgToken = 0;
       let background: BackgroundHandle | null = null;
@@ -39,7 +44,7 @@ export function App() {
           ctx.viewport.removeChild(grid);
           grid.destroy();
         }
-        grid = drawGrid(ctx.viewport, width, size, color);
+        grid = drawGrid(ctx.viewport, width, height, size, color);
       });
       disposers.push(offGrid);
 
@@ -73,8 +78,12 @@ export function App() {
         for (const d of disposers) d();
         if (grid) grid.destroy();
         if (background) background.destroy();
-        ctx.app.destroy(true, { children: true });
+        ctx.destroy();
+        disconnectSocket();
       };
+      if (isCancelled) {
+        cleanup();
+      }
       if (import.meta.hot) {
         import.meta.hot.dispose(() => {
           cleanup?.();
@@ -82,6 +91,7 @@ export function App() {
       }
     })();
     return () => {
+      isCancelled = true;
       cleanup?.();
     };
   }, [status === "authenticated"]);

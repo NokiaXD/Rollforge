@@ -1,5 +1,6 @@
 import { setAuthenticated, setAnon, users } from "../state/auth";
 import type { CurrentUser, PublicUser } from "../state/auth";
+import { disconnectSocket } from "./socket";
 
 export interface AuthError {
   status: number;
@@ -40,6 +41,7 @@ export const register = (username: string, password: string) => authCall("regist
 
 export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  disconnectSocket();
   setAnon();
   users.value = [];
 }

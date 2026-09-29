@@ -28,9 +28,31 @@ let joinEffectInstalled = false;
 // so the GM opens on the active scene. After that the GM navigates freely via setGmCamera.
 let initialActiveSync = true;
 
+export function disconnectSocket(): void {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  lastJoinedScene = null;
+  initialActiveSync = true;
+}
+
 export function connectSocket(): Socket {
   if (socket) return socket;
   socket = io({ path: "/socket.io", transports: ["websocket"] });
+
+  const currentId = currentSceneId.value;
+  if (currentId) {
+    socket.emit("joinScene", currentId, (payload: { tokens: Token[] }) => {
+      resetScene(
+        payload.tokens.map((t) => ({
+          ...t,
+          sceneId: currentId,
+        })),
+      );
+    });
+    lastJoinedScene = currentId;
+  }
 
   socket.on("you", (payload: { userId: string }) => {
     myUserId.value = payload.userId;
