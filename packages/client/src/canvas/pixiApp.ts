@@ -6,6 +6,7 @@ export interface PixiCtx {
   viewport: Viewport;
   width: number;
   height: number;
+  destroy: () => void;
 }
 
 export async function createPixi(host: HTMLElement): Promise<PixiCtx> {
@@ -43,5 +44,10 @@ export async function createPixi(host: HTMLElement): Promise<PixiCtx> {
   };
   window.addEventListener("resize", onResize);
 
-  return { app, viewport, width, height };
+  const destroy = () => {
+    window.removeEventListener("resize", onResize);
+    app.destroy(true, { children: true });
+  };
+
+  return { app, viewport, width, height, destroy };
 }

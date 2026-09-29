@@ -80,8 +80,6 @@ export class TokenSprite {
     // pointertap fires on click without drag, so it doesn't conflict with the drag flow.
     this.container.on("pointertap", this.onPointerTap);
 
-    this.startTweenLoop();
-
     // Reactive redraw on lock or focus change.
     const off = effect(() => {
       // touch both signals so the effect tracks them
@@ -110,6 +108,7 @@ export class TokenSprite {
     this.targetY = y;
     this.container.position.set(x, y);
     this.tweening = false;
+    this.stopTweenLoop();
   }
 
   private startTweenLoop(): void {
@@ -120,7 +119,15 @@ export class TokenSprite {
         const f = Math.min(1, elapsed / TokenSprite.TWEEN_MS);
         this.container.position.x = this.tweenFromX + (this.targetX - this.tweenFromX) * f;
         this.container.position.y = this.tweenFromY + (this.targetY - this.tweenFromY) * f;
-        if (f >= 1) this.tweening = false;
+        if (f >= 1) {
+          this.tweening = false;
+          this.rafHandle = null;
+          return;
+        }
+      } else {
+        this.tweening = false;
+        this.rafHandle = null;
+        return;
       }
       this.rafHandle = requestAnimationFrame(tick);
     };
@@ -144,6 +151,7 @@ export class TokenSprite {
     this.targetY = token.y;
     this.tweenStart = performance.now();
     this.tweening = true;
+    this.startTweenLoop();
   }
 
   private setLockedBy(ownerId: string | undefined, myId: string): void {
