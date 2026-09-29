@@ -163,10 +163,14 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
           createdAt: now,
           ...(whisperToName ? { whisperTo: whisperToName } : {}),
         };
-        io.to(`user:${senderUserId}`)
-          .to(`user:${chatOpts.to ?? ""}`)
-          .to(`user:${whisperToName ?? ""}`)
-          .emit("chatMessage", ev);
+        let emitter = io.to(`user:${senderUserId}`);
+        if (chatOpts.to) {
+          emitter = emitter.to(`user:${chatOpts.to}`);
+        }
+        if (whisperToName && whisperToName !== chatOpts.to) {
+          emitter = emitter.to(`user:${whisperToName}`);
+        }
+        emitter.emit("chatMessage", ev);
         return;
       }
 

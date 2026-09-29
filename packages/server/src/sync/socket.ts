@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Server as SocketIOServer, Socket } from "socket.io";
 import type {
   ActiveSceneChangedEvent,
@@ -132,12 +133,13 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
     socket.on("createToken", (payload: { sceneId: string; x?: number; y?: number; w?: number; h?: number }) => {
       if (!payload || typeof payload.sceneId !== "string") return;
       if (gateSceneActive && !isGM && payload.sceneId !== state.getActiveSceneId()) return;
-      const id = `tok-${Math.random().toString(36).slice(2, 10)}`;
+      const id = `tok-${randomUUID()}`;
       const token = state.createToken(id, payload.sceneId, payload.x ?? 0, payload.y ?? 0, payload.w ?? 1, payload.h ?? 1);
       io.to(`scene:${payload.sceneId}`).emit("tokenCreated", token);
     });
 
     socket.on("intent", (intent: Intent) => {
+      if (!intent || typeof intent !== "object" || typeof (intent as any).type !== "string") return;
       if (intent.type === "SendChatMessage") {
         if (!chatStore) return;
         void processChat(
