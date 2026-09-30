@@ -182,6 +182,10 @@ export class TokenSprite {
   };
 
   private onPointerDown = (e: FederatedPointerEvent) => {
+    //  only left-button starts a drag. Right/middle are reserved for
+    // viewport pan and our context menu; without this guard, right-clicking a
+    // token would silently acquire its drag lock.
+    if (e.button !== 0) return;
     e.stopPropagation();
     this.pendingDrag = true;
     this.syncTo(this.container.position.x, this.container.position.y);
@@ -210,15 +214,25 @@ export class TokenSprite {
       sceneId: this.token.sceneId,
       tokenId: this.token.id,
     });
+    this.sendMove(snapped.x, snapped.y);
+  };
+
+  private sendMove(snappedX: number, snappedY: number): void {
+    const rev = this.token._rev;
+    //  optimistic _rev bump — server's TokenPositionDiff takes a round trip
+    // to come back, but we send the next throttled MoveToken 50ms later, often before
+    // the diff arrives. Without this bump the next packet carries the rev we already
+    // consumed and the server correctly rejects it as stale.
+    this.token = { ...this.token, _rev: rev + 1 };
     this.sendIntent({
       type: "MoveToken",
       sceneId: this.token.sceneId,
       tokenId: this.token.id,
-      x: snapped.x,
-      y: snapped.y,
-      _rev: this.token._rev,
+      x: snappedX,
+      y: snappedY,
+      _rev: rev,
     });
-  };
+  }
 
   private onViewportMove = (e: FederatedPointerEvent) => {
     if (!this.pendingDrag) return;
@@ -234,14 +248,7 @@ export class TokenSprite {
     if (now - this.lastSent >= THROTTLE_MS) {
       this.lastSent = now;
       const snapped = snapToGrid(local.x, local.y, cellSize.value);
-      this.sendIntent({
-        type: "MoveToken",
-        sceneId: this.token.sceneId,
-        tokenId: this.token.id,
-        x: snapped.x,
-        y: snapped.y,
-        _rev: this.token._rev,
-      });
+      this.sendMove(snapped.x, snapped.y);
     }
   };
 }

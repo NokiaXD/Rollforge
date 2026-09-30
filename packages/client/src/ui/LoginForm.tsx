@@ -50,13 +50,13 @@ export function LoginForm() {
         class="w-80 rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur"
       >
         <h1 class="mb-1 text-lg font-semibold">RollForge</h1>
-        <p class="mb-4 text-xs text-[var(--color-muted)]">
+        <p class="mb-4 text-xs text-muted">
           {mode === "login"
             ? "Sign in to your account."
             : "First account becomes GM; everyone else is Player."}
         </p>
 
-        <label class="mb-2 block text-xs uppercase tracking-wide text-[var(--color-muted)]">
+        <label class="mb-2 block text-xs uppercase tracking-wide text-muted">
           Username
           <input
             type="text"
@@ -66,11 +66,11 @@ export function LoginForm() {
             autocapitalize="off"
             spellcheck={false}
             disabled={busy}
-            class="mt-1 block w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-[var(--color-accent)]"
+            class="mt-1 block w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-accent"
           />
         </label>
 
-        <label class="mb-3 block text-xs uppercase tracking-wide text-[var(--color-muted)]">
+        <label class="mb-3 block text-xs uppercase tracking-wide text-muted">
           Password
           <input
             type="password"
@@ -78,7 +78,7 @@ export function LoginForm() {
             onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
             autocomplete={mode === "login" ? "current-password" : "new-password"}
             disabled={busy}
-            class="mt-1 block w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-[var(--color-accent)]"
+            class="mt-1 block w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-accent"
           />
         </label>
 
@@ -91,12 +91,12 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={busy || !username || !password}
-          class="block w-full rounded-md bg-[var(--color-accent)] py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          class="block w-full rounded-md bg-accent py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
         >
           {busy ? "..." : mode === "login" ? "Sign in" : "Create account"}
         </button>
 
-        <p class="mt-4 text-center text-xs text-[var(--color-muted)]">
+        <p class="mt-4 text-center text-xs text-muted">
           {mode === "login" ? (
             <>
               No account?{" "}

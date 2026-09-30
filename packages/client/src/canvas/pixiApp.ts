@@ -36,18 +36,25 @@ export async function createPixi(host: HTMLElement): Promise<PixiCtx> {
   // wheel = zoom centered on cursor; right-mouse / middle = pan. Default Pixi-viewport presets.
   viewport.drag({ mouseButtons: "right-middle" }).wheel({ smooth: 6 }).clampZoom({ minScale: 0.1, maxScale: 3 });
 
-  const onResize = () => {
+  const resizeCanvas = () => {
     const w = host.clientWidth || window.innerWidth;
     const h = host.clientHeight || window.innerHeight;
     app.renderer.resize(w, h);
-    viewport.resize(w, h, 4000, 4000);
+    viewport.resize(w, h, viewport.worldWidth, viewport.worldHeight);
   };
-  window.addEventListener("resize", onResize);
+
+  window.addEventListener("resize", resizeCanvas);
+  const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resizeCanvas) : null;
+  if (observer) {
+    observer.observe(host);
+  }
 
   const destroy = () => {
-    window.removeEventListener("resize", onResize);
+    window.removeEventListener("resize", resizeCanvas);
+    observer?.disconnect();
     app.destroy(true, { children: true });
   };
 
   return { app, viewport, width, height, destroy };
 }
+
