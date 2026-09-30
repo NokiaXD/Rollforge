@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { UsersStore, type Role } from "./usersStore";
 import { hashPassword, verifyPassword } from "./password";
-import { signSession, SESSION_COOKIE } from "./jwt";
+import { SESSION_COOKIE, type SessionsStore } from "./sessions";
 import { LoginRateLimiter } from "./rateLimit";
 import { requireAuth, requireGm } from "./middleware";
 
@@ -16,16 +16,22 @@ const COOKIE_BASE = {
 
 export interface AuthDeps {
   users: UsersStore;
-  secret: string;
+  sessions: SessionsStore;
   rateLimiter: LoginRateLimiter;
   // test-only: skip secure-cookie check. Production sets it via NODE_ENV.
   cookieSecure?: boolean | undefined;
 }
 
 export function createAuthRouter(deps: AuthDeps): Router {
-  const { users, secret, rateLimiter } = deps;
+  const { users, sessions, rateLimiter } = deps;
   const secure = deps.cookieSecure ?? process.env.NODE_ENV === "production";
   const router = Router();
+
+  const issueSession = (res: Response, username: string, role: Role) => {
+    const session = sessions.create(username);
+    res.cookie(SESSION_COOKIE, session.id, { ...COOKIE_BASE, secure });
+    return session;
+  };
 
   // Register a new account. First user auto-becomes GM, rest default to Player.
   router.post("/register", async (req: Request, res: Response) => {
@@ -49,12 +55,11 @@ export function createAuthRouter(deps: AuthDeps): Router {
       res.status(409).json({ error: "username-taken" });
       return;
     }
-    const token = signSession(secret, { sub: username, role });
-    res.cookie(SESSION_COOKIE, token, { ...COOKIE_BASE, secure });
+    issueSession(res, username, role);
     res.status(201).json({ username, role });
   });
 
-  // Login: returns JWT cookie on success.
+  // Login: returns the opaque session cookie on success.
   router.post("/login", async (req: Request, res: Response) => {
     const { username, password } = (req.body ?? {}) as {
       username?: unknown;
@@ -88,12 +93,13 @@ export function createAuthRouter(deps: AuthDeps): Router {
       return;
     }
     rateLimiter.recordSuccess(key);
-    const token = signSession(secret, { sub: user.username, role: user.role });
-    res.cookie(SESSION_COOKIE, token, { ...COOKIE_BASE, secure });
+    issueSession(res, user.username, user.role);
     res.json({ username: user.username, role: user.role });
   });
 
-  router.post("/logout", (_req: Request, res: Response) => {
+  // Logout revokes server-side: the row is gone, the cookie is now worthless.
+  router.post("/logout", (req: Request, res: Response) => {
+    if (req.sessionId) sessions.delete(req.sessionId);
     res.clearCookie(SESSION_COOKIE, COOKIE_BASE);
     res.json({ ok: true });
   });
@@ -124,6 +130,8 @@ export function createAuthRouter(deps: AuthDeps): Router {
     }
     const newHash = await hashPassword(newPassword);
     users.setPasswordHash(username, newHash);
+    // Old sessions die with the old password.
+    sessions.deleteAllFor(username);
     res.json({ ok: true });
   });
 
@@ -148,6 +156,7 @@ export function createAuthRouter(deps: AuthDeps): Router {
       return;
     }
     users.deleteUser(target);
+    sessions.deleteAllFor(target);
     res.json({ ok: true });
   });
 

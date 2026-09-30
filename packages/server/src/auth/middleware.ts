@@ -1,11 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
-import { SESSION_COOKIE, verifySession } from "./jwt";
-import type { SessionPayload } from "./jwt";
+import { SESSION_COOKIE, resolveSession, type SessionPayload } from "./sessions";
+import type { SessionsStore } from "./sessions";
+import type { UsersStore } from "./usersStore";
 
 declare global {
   namespace Express {
     interface Request {
       user?: SessionPayload;
+      sessionId?: string;
     }
   }
 }
@@ -25,13 +27,16 @@ export function parseCookies(header: string | undefined): Record<string, string>
   return out;
 }
 
-export function authMiddleware(secret: string) {
+export function authMiddleware(users: UsersStore, sessions: SessionsStore) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[SESSION_COOKIE];
     if (!token) return next();
-    const session = verifySession(secret, token);
-    if (session) req.user = session;
+    const session = resolveSession(sessions, users, token);
+    if (session) {
+      req.user = session;
+      req.sessionId = token;
+    }
     next();
   };
 }

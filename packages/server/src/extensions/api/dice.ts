@@ -1,13 +1,14 @@
-import type {
-  DiceResult,
-  RollActorRef,
-  RollActor,
-  PreDiceRollPayload,
-  PostDiceRollPayload,
+import {
+  validateDice,
+  type DiceResult,
+  type RollActorRef,
+  type RollActor,
+  type PreDiceRollPayload,
+  type PostDiceRollPayload,
 } from "@rollforge/protocol";
 import type { HooksEngine } from "@rollforge/extension-api";
 import { CommandRejection } from "@rollforge/extension-api";
-import { validateDice, rollDice } from "../../dice/adapter";
+import { rollDice } from "../../dice/adapter";
 import type { DocumentStore } from "../../db/documentStore";
 import { canRollAsCharacter } from "../../security/authorize";
 import { invocationStorage } from "../../sync/invocationContext";

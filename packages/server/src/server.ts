@@ -8,7 +8,7 @@ import { DocumentStore } from "./db/documentStore";
 import { ChatStore } from "./db/chatStore";
 import { openWorldDb } from "./db/connection";
 import { UsersStore } from "./auth/usersStore";
-import { loadJwtSecret, SESSION_COOKIE, verifySession } from "./auth/jwt";
+import { SessionsStore, SESSION_COOKIE, resolveSession } from "./auth/sessions";
 import { LoginRateLimiter } from "./auth/rateLimit";
 import { authMiddleware, parseCookies } from "./auth/middleware";
 import { createAuthRouter } from "./auth/routes";
@@ -24,7 +24,7 @@ import type { ChatMessageEvent, Document, RollActor } from "@rollforge/protocol"
 
 export interface AuthOpts {
   users?: UsersStore | null;
-  secret?: string;
+  sessions?: SessionsStore | null;
   rateLimiter?: LoginRateLimiter;
   cookieSecure?: boolean;
   sync?: Partial<SyncDeps>;
@@ -50,6 +50,7 @@ export interface RollforgeServer {
   store: DocumentStore | null;
   chatStore: ChatStore | null;
   users: UsersStore | null;
+  sessions: SessionsStore | null;
   extensions: ExtensionManager;
   hooks: HooksEngine;
   close: () => Promise<void>;
@@ -89,6 +90,12 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const users: UsersStore | null = authEnabled
     ? (authCfg.users ?? new UsersStore(`${dataDir}/users.db`))
     : (opts.users ?? null);
+
+  // Sessions live in their own db because users are global to the install, not
+  // per-world. Revoking is a DELETE, which a stateless JWT cannot do.
+  const sessions: SessionsStore | null = authEnabled
+    ? (authCfg.sessions ?? new SessionsStore(`${dataDir}/sessions.db`))
+    : null;
 
   const hooks = new HooksEngine();
   const commandRegistry = new ChatCommandRegistry();
@@ -247,16 +254,15 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     })
     .then(() => extensions.dispatchActivationEvent("onReady"));
 
-  if (authEnabled && users) {
-    const secret = authCfg.secret ?? loadJwtSecret(dataDir);
+  if (authEnabled && users && sessions) {
     const limiter = authCfg.rateLimiter ?? new LoginRateLimiter();
 
-    app.use(authMiddleware(secret));
+    app.use(authMiddleware(users, sessions));
     app.use(
       "/api/auth",
       createAuthRouter({
         users,
-        secret,
+        sessions,
         rateLimiter: limiter,
         cookieSecure: authCfg.cookieSecure,
       }),
@@ -267,8 +273,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
 
     io.use((socket, next) => {
       const cookies = parseCookies(socket.handshake.headers.cookie);
-      const token = cookies[SESSION_COOKIE];
-      const session = token ? verifySession(secret, token) : null;
+      const session = resolveSession(sessions, users, cookies[SESSION_COOKIE]);
       socket.data.authSession = session;
       socket.data.role = session?.role ?? null;
       socket.data.username = session?.sub ?? null;
@@ -315,6 +320,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     store,
     chatStore,
     users,
+    sessions,
     extensions,
     hooks,
     close: async () => {
@@ -326,6 +332,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
         io.close();
         http.close(() => {
           users?.close();
+          sessions?.close();
           opts.store?.close();
           opts.chatStore?.close();
           worldDb?.close();

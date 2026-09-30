@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request as httpRequest } from "node:http";
+import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { createRollforgeServer, listen, type RollforgeServer } from "../server";
 import { mkdtemp } from "node:fs/promises";
 
@@ -72,6 +73,22 @@ function extractCookie(setCookie: string | undefined, name: string): string | nu
   return null;
 }
 
+// The server emits `you` immediately on connect, so listen before connecting.
+function connectClient(
+  port: number,
+  cookie: string
+): Promise<{ socket: ClientSocket; you: { userId: string; role: string | null; username: string } }> {
+  return new Promise((resolve, reject) => {
+    const socket = ioClient(`http://localhost:${port}`, {
+      transports: ["websocket"],
+      forceNew: true,
+      extraHeaders: { cookie },
+    });
+    socket.on("you", (payload) => resolve({ socket, you: payload }));
+    socket.on("connect_error", reject);
+  });
+}
+
 describe("auth HTTP integration", () => {
   let server: RollforgeServer;
   let port: number;
@@ -88,7 +105,7 @@ describe("auth HTTP integration", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it("registers the first user as GM, sets JWT cookie, persists across restart", async () => {
+  it("registers the first user as GM, sets an opaque session cookie, persists across restart", async () => {
     const r = await request(port, "POST", "/api/auth/register", {
       username: "alice",
       password: "supersecret",
@@ -97,6 +114,10 @@ describe("auth HTTP integration", () => {
     expect(JSON.parse(r.body).role).toBe("GM");
     const cookie = extractCookie(r.setCookie, "rf_session");
     expect(cookie).toBeTruthy();
+    // opaque: the cookie value is a bare random id, not a JWT
+    const sessionId = cookie!.split("=")[1]!;
+    expect(sessionId.split(".")).toHaveLength(1);
+    expect(sessionId).not.toContain("alice");
 
     // /me works with the cookie
     const me = await request(port, "GET", "/api/auth/me", undefined, cookie ?? undefined);
@@ -113,6 +134,54 @@ describe("auth HTTP integration", () => {
     });
     expect(login.status).toBe(200);
     expect(JSON.parse(login.body).role).toBe("GM");
+  });
+
+  it("logout revokes the session server-side, not just in the browser", async () => {
+    const reg = await request(port, "POST", "/api/auth/register", { username: "alice", password: "pwpwpwpw" });
+    const cookie = extractCookie(reg.setCookie, "rf_session")!;
+
+    const out = await request(port, "POST", "/api/auth/logout", undefined, cookie);
+    expect(out.status).toBe(200);
+
+    // Replaying the very same cookie now fails: the row is gone.
+    const me = await request(port, "GET", "/api/auth/me", undefined, cookie);
+    expect(me.status).toBe(401);
+  });
+
+  it("a socket authenticated with a revoked session is treated as anonymous", async () => {
+    const reg = await request(port, "POST", "/api/auth/register", { username: "alice", password: "pwpwpwpw" });
+    const cookie = extractCookie(reg.setCookie, "rf_session")!;
+    const sessionId = cookie.split("=")[1]!;
+
+    // Positive control: the cookie reaches the handshake at all.
+    const live = await connectClient(port, cookie);
+    expect(live.you.role).toBe("GM");
+    expect(live.you.username).toBe("alice");
+    live.socket.close();
+
+    server.sessions!.delete(sessionId);
+
+    const revoked = await connectClient(port, cookie);
+    expect(revoked.you.role).toBeNull();
+    expect(revoked.you.username).toMatch(/^user-/);
+    revoked.socket.close();
+  });
+
+  it("GM password reset kills the target's existing sessions", async () => {
+    const reg1 = await request(port, "POST", "/api/auth/register", { username: "alice", password: "pwpwpwpw" });
+    const reg2 = await request(port, "POST", "/api/auth/register", { username: "bob", password: "pwpwpwpw" });
+    const aliceCookie = extractCookie(reg1.setCookie, "rf_session")!;
+    const bobCookie = extractCookie(reg2.setCookie, "rf_session")!;
+
+    const reset = await request(port, "POST", "/api/auth/gm/reset-password", {
+      username: "bob",
+      newPassword: "newpw1234",
+    }, aliceCookie);
+    expect(reset.status).toBe(200);
+
+    expect((await request(port, "GET", "/api/auth/me", undefined, bobCookie)).status).toBe(401);
+    // alice's own session is untouched
+    expect((await request(port, "GET", "/api/auth/me", undefined, aliceCookie)).status).toBe(200);
   });
 
   it("second registered user is Player", async () => {

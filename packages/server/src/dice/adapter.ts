@@ -1,90 +1,22 @@
 import { DiceRoll, NumberGenerator } from "@dice-roller/rpg-dice-roller";
 import { randomInt } from "node:crypto";
-import type { DiceResult, DiceRoll as OurDiceRoll, DiceTermResult } from "@rollforge/protocol";
+import {
+  parseDiceTerms,
+  validateDice,
+  type DiceResult,
+  type DiceTermResult,
+} from "@rollforge/protocol";
+
+export const HISTORY_PAGE = 50;
+export const MAX_LEN_MESSAGE = 2000;
 
 // the library's export() type expects an enum-like object but its runtime
 // only cares about the numeric value. We just need OBJECT (2). Cast through unknown to
 // satisfy strict typing without re-importing the enum shape.
 const EXPORT_OBJECT = 2 as unknown as Parameters<DiceRoll["export"]>[0];
 
-export const LIMITS = {
-  MAX_NOTATION_LEN: 200,
-  MAX_DICE_PER_TERM: 100,
-  MAX_SIDES: 1000,
-  MAX_TERMS: 10,
-} as const;
-
-export const HISTORY_PAGE = 50;
-export const MAX_LEN_MESSAGE = 2000;
-
-export type DiceValidation =
-  | { ok: true }
-  | {
-      ok: false;
-      reason:
-        | "bad-notation"
-        | "too-many-terms"
-        | "dice-count-too-large"
-        | "face-too-large"
-        | "invalid-keep";
-    };
-
-const TERM_RE = /([+-]?)(\d*)d(F|\d+)/gi;
-const KEEP_RE = /^k(h|l)?(\d+)?/i;
-
-// parsed both for validation and for matching library output by index/order.
-// Each term returned here uses `kept = how many dice remain after kh/kl`.
-export function parseDiceTerms(notation: string): OurDiceRoll[] {
-  const out: OurDiceRoll[] = [];
-  for (const m of notation.matchAll(TERM_RE)) {
-    const sign = m[1] === "-" ? -1 : 1;
-    const count = m[2] === "" ? 1 : Number(m[2]);
-    const sidesRaw = m[3] ?? "";
-    const fudge = sidesRaw.toUpperCase() === "F";
-    const sides = fudge ? 0 : Number(sidesRaw);
-    const rest = notation.slice(Number(m.index) + m[0].length);
-    const km = KEEP_RE.exec(rest);
-    let kept: number | undefined;
-    if (km && (km[1] !== undefined || km[2] !== undefined)) {
-      const klDrop = (km[1] ?? "").toLowerCase() === "l";
-      const keepN = km[2] !== undefined ? Number(km[2]) : 1;
-      // kh0 / kl0 are nonsensical (drop 0 / keep 0). Mark as invalid-keep.
-      if (keepN <= 0) {
-        kept = 0;
-      } else {
-        kept = klDrop ? count - keepN : keepN;
-      }
-    }
-    const roll: OurDiceRoll = { sign, count, sides };
-    if (fudge) roll.fudge = true;
-    if (kept !== undefined) roll.kept = kept;
-    out.push(roll);
-  }
-  return out;
-}
-
-export function validateDice(notation: string): DiceValidation {
-  const t = notation.trim();
-  if (!t || t.length > LIMITS.MAX_NOTATION_LEN) return { ok: false, reason: "bad-notation" };
-  // allow any character — the library's own parser is the final gate.
-  // We only need to enforce OUR budgeting limits and kh/kl shape.
-  const terms = parseDiceTerms(t);
-  if (terms.length === 0) return { ok: false, reason: "bad-notation" };
-  if (terms.length > LIMITS.MAX_TERMS) return { ok: false, reason: "too-many-terms" };
-  for (const term of terms) {
-    if (term.count === 0) return { ok: false, reason: "invalid-keep" };
-    if (term.count > LIMITS.MAX_DICE_PER_TERM) {
-      return { ok: false, reason: "dice-count-too-large" };
-    }
-    if (!term.fudge && term.sides > LIMITS.MAX_SIDES) {
-      return { ok: false, reason: "face-too-large" };
-    }
-    if (term.kept !== undefined && (term.kept <= 0 || term.kept > term.count)) {
-      return { ok: false, reason: "invalid-keep" };
-    }
-  }
-  return { ok: true };
-}
+// parseDiceTerms / validateDice live in @rollforge/protocol: the client parses
+// too. Only the actual roll needs the library and the crypto RNG.
 
 // the library guards its own inner loops against runaway counts and faces,
 // but historically took untrusted input from the network. We pre-validate both because
