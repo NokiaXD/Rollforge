@@ -135,16 +135,32 @@ export function setActiveSceneAsGM(sceneId: string): void {
   sendIntent({ type: "SetActiveScene", sceneId });
 }
 
-export function createSceneRequest(sceneId: string, name: string, system: SceneSystem): void {
-  sendIntent({ type: "CreateScene", sceneId, name, system });
+export function createSceneRequest(sceneId: string, name: string, system: SceneSystem, img?: string | null, folder?: string | null): void {
+  sendIntent({ type: "CreateScene", sceneId, name, system, ...(img !== undefined ? { img } : {}), ...(folder !== undefined ? { folder } : {}) });
 }
 
-export function updateSceneRequest(sceneId: string, name: string, system: SceneSystem): void {
-  sendIntent({ type: "UpdateScene", sceneId, name, system });
+export function updateSceneRequest(sceneId: string, name: string, system: SceneSystem, img?: string | null, folder?: string | null): void {
+  sendIntent({ type: "UpdateScene", sceneId, name, system, ...(img !== undefined ? { img } : {}), ...(folder !== undefined ? { folder } : {}) });
+}
+
+export function createFolderRequest(folderId: string, name: string): void {
+  sendIntent({ type: "CreateFolder", folderId, name });
+}
+
+export function updateFolderRequest(folderId: string, name: string): void {
+  sendIntent({ type: "UpdateFolder", folderId, name });
+}
+
+export function deleteFolderRequest(folderId: string): void {
+  sendIntent({ type: "DeleteFolder", folderId });
 }
 
 export function deleteSceneRequest(sceneId: string): void {
   sendIntent({ type: "DeleteScene", sceneId });
+}
+
+export function moveSceneRequest(sceneId: string, folder: string | null, index: number): void {
+  sendIntent({ type: "MoveScene", sceneId, ...(folder !== null ? { folder } : {}), index });
 }
 
 export function sendIntent(intent: Intent): void {

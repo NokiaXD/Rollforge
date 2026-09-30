@@ -1,7 +1,8 @@
 import { effect, signal } from "@preact/signals";
-import type { SceneEvent } from "@rollforge/protocol";
+import type { Scene, SceneEvent, SceneSystem } from "@rollforge/protocol";
 import { currentUser } from "./auth";
 import { viewedScene, removeScene, upsertScene } from "./scenes";
+import { removeFolder, upsertFolder } from "./folders";
 
 export interface Token {
   id: string;
@@ -73,11 +74,39 @@ export function applyEvent(ev: SceneEvent): void {
     }
     case "SceneCreated":
     case "SceneUpdated": {
-      upsertScene({ id: ev.sceneId, type: "Scene", name: ev.name || ev.sceneId, system: ev.system, flags: {}, ownership: {}, _rev: ev._rev });
+      const systemWithFolder: SceneSystem = { ...ev.system, folder: ev.folder ?? ev.system.folder ?? null };
+      const doc: Scene = {
+        id: ev.sceneId,
+        type: "Scene",
+        name: ev.name || ev.sceneId,
+        system: systemWithFolder,
+        flags: {},
+        ownership: {},
+        _rev: ev._rev,
+      };
+      if (ev.img !== undefined) doc.img = ev.img;
+      upsertScene(doc);
       return;
     }
     case "SceneDeleted": {
       removeScene(ev.sceneId);
+      return;
+    }
+    case "FolderCreated":
+    case "FolderUpdated": {
+      upsertFolder({
+        id: ev.folderId,
+        type: "Folder",
+        name: ev.name || ev.folderId,
+        system: {},
+        flags: {},
+        ownership: {},
+        _rev: ev._rev,
+      });
+      return;
+    }
+    case "FolderDeleted": {
+      removeFolder(ev.folderId);
       return;
     }
   }
