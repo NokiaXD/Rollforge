@@ -157,9 +157,9 @@ export function ChatView() {
         />
         <button
           type="submit"
-          class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+          class=" text-white *:hover:text-accent transition-opacity text-2xl"
         >
-          Send
+          <i class="nf nf-cod-send"></i>
         </button>
       </form>
     </div>

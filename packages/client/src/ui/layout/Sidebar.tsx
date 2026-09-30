@@ -18,14 +18,7 @@ export function Sidebar() {
         <span class="text-[11px] font-semibold uppercase tracking-wider text-muted">
           {titles[tab] ?? tab}
         </span>
-        <button
-          type="button"
-          onClick={closeSidebar}
-          class="rounded p-1 text-muted hover:bg-white/10 hover:text-white transition-colors"
-          title="Colapsar panel (Ctrl+B)"
-        >
-          ✕
-        </button>
+       
       </div>
 
       {/* Sidebar Content View */}

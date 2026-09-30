@@ -42,27 +42,42 @@ export function ContextMenu() {
       class="min-w-44 rounded-md border border-white/10 bg-[#181a1f] py-1 text-xs text-[#e7e9ee] shadow-2xl"
       onContextMenu={(e) => e.preventDefault()}
     >
-      {state.items.map((it, i) => (
-        <button
-          key={i}
-          type="button"
-          role="menuitem"
-          disabled={it.disabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            it.onClick();
-            contextMenu.value = null;
-          }}
-          class={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-            it.danger
-              ? "text-red-300 hover:bg-red-500/20"
-              : "hover:bg-white/10"
-          }`}
-        >
-          <span>{it.label}</span>
-          {it.hint && <span class="text-[10px] text-muted">{it.hint}</span>}
-        </button>
-      ))}
+      {state.items.map((it, i) =>
+        it.divider ? (
+          <div key={i} class="my-1 border-t border-white/10" />
+        ) : (
+          <button
+            key={i}
+            type="button"
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (it.disabled) return;
+              it.onClick?.();
+              contextMenu.value = null;
+            }}
+            class={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors ${
+              it.disabled
+                ? "cursor-default text-white/70 font-medium"
+                : it.danger
+                ? "text-red-300 hover:bg-red-500/20"
+                : "hover:bg-white/10 text-muted hover:text-white"
+            }`}
+          >
+            <span>{it.label}</span>
+            {it.hint && (
+              <span
+                class={`text-[10px] ${
+                  it.disabled ? "text-amber-300/80 font-normal" : "text-muted"
+                }`}
+              >
+                {it.hint}
+              </span>
+            )}
+          </button>
+        )
+      )}
     </div>
   );
 }

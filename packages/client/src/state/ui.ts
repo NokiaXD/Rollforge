@@ -19,11 +19,12 @@ export const folderFormModal = signal<FolderFormContext | null>(null);
 export const folderDeleteConfirm = signal<string | null>(null);
 
 export type ContextMenuItem = {
-  label: string;
-  onClick: () => void;
+  label?: string;
+  onClick?: () => void;
   hint?: string;
   danger?: boolean;
   disabled?: boolean;
+  divider?: boolean;
 };
 
 export type ContextMenuState = {
@@ -34,9 +35,12 @@ export type ContextMenuState = {
 
 export const contextMenu = signal<ContextMenuState | null>(null);
 
-export function openContextMenu(e: MouseEvent, items: ContextMenuItem[]): void {
-  e.preventDefault();
-  e.stopPropagation();
+export function openContextMenu(
+  e: { clientX: number; clientY: number; preventDefault?: () => void; stopPropagation?: () => void },
+  items: ContextMenuItem[]
+): void {
+  e.preventDefault?.();
+  e.stopPropagation?.();
   contextMenu.value = { x: e.clientX, y: e.clientY, items };
 }
 

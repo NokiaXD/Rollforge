@@ -11,14 +11,6 @@ export function RightSidebar() {
         <div class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
           <span>Chat & Dados</span>
         </div>
-        <button
-          type="button"
-          onClick={() => toggleChat(false)}
-          class="rounded p-1 text-muted hover:bg-white/10 hover:text-white transition-colors"
-          title="Colapsar panel derecho (Ctrl+Alt+B)"
-        >
-          ✕
-        </button>
       </div>
 
       {/* Right Sidebar Content View */}
