@@ -15,6 +15,7 @@ import { createAuthRouter } from "./auth/routes";
 import { createUploadsRouter } from "./uploads";
 import type { Database as DB } from "better-sqlite3";
 import { ExtensionManager, type ExtensionEntry } from "./extensions/manager";
+import { loadExtensions } from "./extensions/loader";
 import { ChatCommandRegistry } from "./extensions/registry";
 import * as chatDice from "./extensions/builtins/chatDice";
 import { HooksEngine, type ChatSendOptions } from "@rollforge/extension-api";
@@ -37,6 +38,7 @@ export interface RollforgeServerOpts {
   auth?: AuthOpts | null;
   dataDir?: string;
   registerBuiltins?: boolean;
+  extensionsDir?: string;
   activationTimeoutMs?: number;
 }
 
@@ -231,7 +233,19 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     }
   }
 
-  void extensions.dispatchActivationEvent("onReady");
+  // Disk extensions must be registered before the first activation dispatch,
+  // otherwise an `onReady` extension is never seen.
+  const extensionsDir =
+    opts.extensionsDir ?? process.env.ROLLFORGE_EXTENSIONS ?? join(dataDir, "extensions");
+  void loadExtensions(extensions, extensionsDir)
+    .then((r) => {
+      if (r.loaded.length || r.failed.length) {
+        console.log(
+          `[extensions] ${extensionsDir}: ${r.loaded.length} loaded, ${r.failed.length} failed`,
+        );
+      }
+    })
+    .then(() => extensions.dispatchActivationEvent("onReady"));
 
   if (authEnabled && users) {
     const secret = authCfg.secret ?? loadJwtSecret(dataDir);
