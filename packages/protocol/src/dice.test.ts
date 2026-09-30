@@ -1,64 +1,79 @@
 import { describe, it, expect } from "vitest";
-import type { DiceResult, DiceRoll, RollActor, RollActorRef } from "./dice";
+import { validateDice, parseDiceTerms, DICE_LIMITS } from "./dice";
 
-describe("DiceRoll (type-level)", () => {
-  it("accepts a basic positive d20", () => {
-    const r: DiceRoll = { sign: 1, count: 1, sides: 20 };
-    expect(r.sign).toBe(1);
-    expect(r.count).toBe(1);
-    expect(r.sides).toBe(20);
+describe("validateDice", () => {
+  it("accepts plain positive terms", () => {
+    expect(validateDice("1d20")).toEqual({ ok: true });
+    expect(validateDice("2d6+3")).toEqual({ ok: true });
+    expect(validateDice("1d20+1d6-3")).toEqual({ ok: true });
+    expect(validateDice("d100")).toEqual({ ok: true });
+    expect(validateDice("4dF")).toEqual({ ok: true });
   });
 
-  it("accepts a fudge roll", () => {
-    const r: DiceRoll = { sign: -1, count: 4, sides: 0, kept: 2, fudge: true };
-    expect(r.fudge).toBe(true);
+  it("rejects empty notation", () => {
+    expect(validateDice("")).toEqual({ ok: false, reason: "bad-notation" });
+    expect(validateDice("   ")).toEqual({ ok: false, reason: "bad-notation" });
   });
 
-  it("accepts kh/kl keep variants", () => {
-    const kh: DiceRoll = { sign: 1, count: 4, sides: 6, kept: 3 };
-    const kl: DiceRoll = { sign: 1, count: 4, sides: 6, kept: 2 };
-    expect(kh.kept).toBe(3);
-    expect(kl.kept).toBe(2);
+  it("rejects notation over the length cap", () => {
+    const long = "1d6+".repeat(DICE_LIMITS.MAX_NOTATION_LEN);
+    expect(validateDice(long)).toEqual({ ok: false, reason: "bad-notation" });
+  });
+
+  it("rejects terms with zero dice", () => {
+    expect(validateDice("0d6")).toEqual({ ok: false, reason: "invalid-keep" });
+  });
+
+  it("rejects too many dice per term", () => {
+    expect(validateDice("1000000d20")).toEqual({ ok: false, reason: "dice-count-too-large" });
+    expect(validateDice("101d20")).toEqual({ ok: false, reason: "dice-count-too-large" });
+  });
+
+  it("rejects faces larger than the cap", () => {
+    expect(validateDice("1d10000")).toEqual({ ok: false, reason: "face-too-large" });
+  });
+
+  it("rejects invalid keep expressions", () => {
+    expect(validateDice("1d6kh0")).toEqual({ ok: false, reason: "invalid-keep" });
+    expect(validateDice("1d6kl0")).toEqual({ ok: false, reason: "invalid-keep" });
+    expect(validateDice("1d6kh2")).toEqual({ ok: false, reason: "invalid-keep" });
+  });
+
+  it("accepts valid kh/kl", () => {
+    expect(validateDice("4d6kh3")).toEqual({ ok: true });
+    expect(validateDice("2d20kh1")).toEqual({ ok: true });
+    expect(validateDice("4d6kl1")).toEqual({ ok: true });
+  });
+
+  it("rejects more terms than the cap", () => {
+    expect(validateDice("1d6+1d6+1d6+1d6+1d6+1d6+1d6+1d6+1d6+1d6+1d6")).toEqual({
+      ok: false,
+      reason: "too-many-terms",
+    });
   });
 });
 
-describe("DiceResult (shape)", () => {
-  it("serializes a typical breakdown", () => {
-    const result: DiceResult = {
-      notation: "2d20kh1+5",
-      terms: [
-        {
-          roll: { sign: 1, count: 2, sides: 20, kept: 1 },
-          rolls: [12, 7],
-          kept: [12],
-          dropped: [7],
-          subtotal: 12,
-        },
-      ],
-      modifier: 5,
-      total: 17,
-    };
-    expect(result.total).toBe((result.terms[0]?.subtotal ?? 0) + result.modifier);
-  });
-});
-
-describe("RollActor variants", () => {
-  it("user ref carries no extra fields", () => {
-    const ref: RollActorRef = { type: "user" };
-    expect(ref.type).toBe("user");
-    expect(ref.type === "user" ? ref.type : "other").toBe("user");
+describe("parseDiceTerms", () => {
+  it("captures sign, count, sides, and kh/kl", () => {
+    expect(parseDiceTerms("-2d20kh1")).toEqual([{ sign: -1, count: 2, sides: 20, kept: 1 }]);
   });
 
-  it("character ref carries characterId", () => {
-    const ref: RollActorRef = { type: "character", characterId: "char_1" };
-    expect(ref.type).toBe("character");
-    if (ref.type === "character") expect(ref.characterId).toBe("char_1");
+  it("defaults count to 1", () => {
+    expect(parseDiceTerms("d20")).toEqual([{ sign: 1, count: 1, sides: 20 }]);
   });
 
-  it("snapshot persists name + id", () => {
-    const a: RollActor = { type: "user", userId: "u1", name: "alice" };
-    const b: RollActor = { type: "character", characterId: "c1", name: "Goblin" };
-    expect(a.name).toBe("alice");
-    expect(b.name).toBe("Goblin");
+  it("flags fudge dice", () => {
+    expect(parseDiceTerms("4dF")).toEqual([{ sign: 1, count: 4, sides: 0, fudge: true }]);
+  });
+
+  it("converts kl to a kept count", () => {
+    expect(parseDiceTerms("4d6kl1")).toEqual([{ sign: 1, count: 4, sides: 6, kept: 3 }]);
+  });
+
+  it("splits multiple terms", () => {
+    expect(parseDiceTerms("1d20+1d6-3")).toEqual([
+      { sign: 1, count: 1, sides: 20 },
+      { sign: 1, count: 1, sides: 6 },
+    ]);
   });
 });
