@@ -175,6 +175,40 @@ describe("SceneState scenes", () => {
     expect(state.getScene("tavern")).toBeUndefined();
   });
 
+  it("moveScene reorders inside a folder without colliding orders", () => {
+    const state = new SceneState();
+    state.createFolder("f1", "Campaña");
+    const mk = (id: string) =>
+      state.createScene(id, id, { width: 1, height: 1, background: null, grid: { size: 50, color: 0, type: "square" } }, null, "f1");
+    for (const id of ["a", "b", "c", "d"]) mk(id);
+    // append one by one so every scene has a distinct order to begin with
+    for (const id of ["a", "b", "c", "d"]) state.moveScene(id, "f1", 99);
+
+    const ordered = () =>
+      state
+        .listScenes()
+        .filter((s) => s.system.folder === "f1")
+        .sort((x, y) => (x.system.order ?? 0) - (y.system.order ?? 0))
+        .map((s) => s.id);
+
+    // mover "a" al final no debe empatar orden con nadie
+    state.moveScene("a", "f1", 3);
+    expect(ordered()).toEqual(["b", "c", "d", "a"]);
+    const orders = state.listScenes().filter((s) => s.system.folder === "f1").map((s) => s.system.order ?? 0);
+    expect(new Set(orders).size).toBe(orders.length);
+
+    // insertar en el medio: el índice es relativo a la lista sin la escena movida
+    state.moveScene("d", "f1", 1);
+    expect(ordered()).toEqual(["b", "d", "c", "a"]);
+  });
+
+  it("moveScene rejects unknown folder and negative index", () => {
+    const state = new SceneState();
+    state.createFolder("f1", "x");
+    expect(state.moveScene("default", "nope", 0)).toBeNull();
+    expect(state.moveScene("default", "f1", -1)).toBeNull();
+  });
+
   it("scenes persist across server restart", () => {
     const db1 = openDb();
     const store1 = new DocumentStore(db1);

@@ -1,4 +1,4 @@
-import type { Document, OwnershipLevel, SceneSystem } from "@rollforge/protocol";
+import type { Document, Folder, FolderSystem, OwnershipLevel, SceneSystem } from "@rollforge/protocol";
 import type { DocumentStore } from "../db/documentStore";
 
 export type TokenOwnership = Record<string, OwnershipLevel> & { default?: OwnershipLevel };
@@ -30,6 +30,7 @@ export interface DragLock {
 const DEFAULT_LOCK_TTL_MS = 5000;
 
 export type SceneDoc = Document<SceneSystem>;
+export type FolderDoc = Document<FolderSystem>;
 
 function defaultSceneSystem(): SceneSystem {
   return {
@@ -48,6 +49,7 @@ export class SceneState {
   private tokens = new Map<string, TokenRecord>();
   private locks = new Map<string, DragLock>();
   private scenes = new Map<string, SceneDoc>();
+  private folders = new Map<string, FolderDoc>();
   private readonly store: DocumentStore | undefined;
   private activeSceneId: string = "default";
 
@@ -90,6 +92,9 @@ export class SceneState {
     for (const doc of this.store.getByType<SceneSystem>("Scene")) {
       this.scenes.set(doc.id, doc);
     }
+    for (const doc of this.store.getByType<FolderSystem>("Folder")) {
+      this.folders.set(doc.id, doc);
+    }
   }
 
   private ensureDefaultScene(): void {
@@ -99,19 +104,23 @@ export class SceneState {
     this.store?.save(doc);
   }
 
-  createScene(sceneId: string, name: string, system: SceneSystem): SceneDoc {
+  createScene(sceneId: string, name: string, system: SceneSystem, img?: string | null, folder?: string | null): SceneDoc {
     if (this.scenes.has(sceneId)) throw new Error(`scene ${sceneId} already exists`);
-    const doc = this.makeSceneDoc(sceneId, name, system);
+    const doc = this.makeSceneDoc(sceneId, name, system, img, folder);
     this.scenes.set(sceneId, doc);
     this.store?.save(doc);
     return doc;
   }
 
-  updateScene(sceneId: string, name: string, system: SceneSystem): SceneDoc | null {
+  updateScene(sceneId: string, name: string, system: SceneSystem, img?: string | null, folder?: string | null): SceneDoc | null {
     const existing = this.scenes.get(sceneId);
     if (!existing) return null;
     existing.name = name || sceneId;
-    existing.system = system;
+    existing.system = { ...system, folder: folder ?? system.folder ?? null };
+    if (img !== undefined) {
+      if (img === null) delete existing.img;
+      else existing.img = img;
+    }
     existing._rev += 1;
     if (this.store) this.store.update(existing, existing._rev - 1);
     return existing;
@@ -125,16 +134,93 @@ export class SceneState {
     return true;
   }
 
-  private makeSceneDoc(sceneId: string, name: string, system: SceneSystem): SceneDoc {
-    return {
-      id: sceneId,
-      type: "Scene",
-      name: name || sceneId,
-      system,
+  //  order is a midpoint between its neighbours, never index*1000: reordering used to
+  //  assign a colliding order to the moved scene and it snapped back on the next reload.
+  //  ponytail: gaps halve on every insert; re-number the list when one hits 0.
+  moveScene(sceneId: string, folder: string | null, index: number): SceneDoc | null {
+    const scene = this.scenes.get(sceneId);
+    if (!scene) return null;
+    if (folder !== null && !this.folders.has(folder)) return null;
+    if (!Number.isFinite(index) || index < 0) return null;
+    // index is relative to the destination list *without* the moving scene
+    const list = this.listScenes()
+      .filter((s) => (s.system.folder ?? null) === folder && s.id !== sceneId)
+      .sort((a, b) => (a.system.order ?? 0) - (b.system.order ?? 0) || a.id.localeCompare(b.id));
+    const at = Math.min(Math.trunc(index), list.length);
+    const prev = at > 0 ? list[at - 1]?.system.order ?? 0 : null;
+    const next = at < list.length ? list[at]?.system.order ?? 0 : null;
+    const lo = prev ?? (next ?? 0) - 1000;
+    const hi = next ?? lo + 1000;
+    scene.system.folder = folder;
+    scene.system.order = at < list.length ? Math.floor((lo + hi) / 2) : hi;
+    scene._rev += 1;
+    if (this.store) this.store.update(scene, scene._rev - 1);
+    return scene;
+  }
+
+  getFolder(id: string): FolderDoc | undefined {
+    return this.folders.get(id);
+  }
+
+  listFolders(): FolderDoc[] {
+    return [...this.folders.values()];
+  }
+
+  createFolder(folderId: string, name: string): FolderDoc {
+    if (this.folders.has(folderId)) throw new Error(`folder ${folderId} already exists`);
+    const doc: FolderDoc = {
+      id: folderId,
+      type: "Folder",
+      name: name || folderId,
+      system: {},
       flags: {},
       ownership: { default: "LIMITED" },
       _rev: 0,
     };
+    this.folders.set(folderId, doc);
+    this.store?.save(doc);
+    return doc;
+  }
+
+  updateFolder(folderId: string, name: string): FolderDoc | null {
+    const existing = this.folders.get(folderId);
+    if (!existing) return null;
+    existing.name = name || folderId;
+    existing._rev += 1;
+    if (this.store) this.store.update(existing, existing._rev - 1);
+    return existing;
+  }
+
+  // Flat folders — delete orphans scenes pointing at the folder and removes it.
+  deleteFolder(folderId: string): { deletedFolders: string[]; orphanedScenes: SceneDoc[] } {
+    const root = this.folders.get(folderId);
+    if (!root) return { deletedFolders: [], orphanedScenes: [] };
+    const orphanedScenes: SceneDoc[] = [];
+    for (const scene of [...this.scenes.values()]) {
+      if (scene.system.folder === folderId) {
+        scene.system.folder = null;
+        scene._rev += 1;
+        if (this.store) this.store.update(scene, scene._rev - 1);
+        orphanedScenes.push(scene);
+      }
+    }
+    this.folders.delete(folderId);
+    this.store?.delete(folderId);
+    return { deletedFolders: [folderId], orphanedScenes };
+  }
+
+  private makeSceneDoc(sceneId: string, name: string, system: SceneSystem, img?: string | null, folder?: string | null): SceneDoc {
+    const doc: SceneDoc = {
+      id: sceneId,
+      type: "Scene",
+      name: name || sceneId,
+      system: { ...system, folder: folder ?? system.folder ?? null },
+      flags: {},
+      ownership: { default: "LIMITED" },
+      _rev: 0,
+    };
+    if (img) doc.img = img;
+    return doc;
   }
 
   createToken(

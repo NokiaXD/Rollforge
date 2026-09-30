@@ -7,6 +7,9 @@ import type {
   Document,
   DragLockAcquiredEvent,
   DragLockReleasedEvent,
+  FolderCreatedEvent,
+  FolderDeletedEvent,
+  FolderUpdatedEvent,
   Intent,
   SceneCreatedEvent,
   SceneDeletedEvent,
@@ -109,12 +112,22 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
       type: "ActiveSceneChanged",
       sceneId: state.getActiveSceneId(),
     } satisfies ActiveSceneChangedEvent);
+    for (const folder of state.listFolders()) {
+      socket.emit("event", {
+        type: "FolderCreated",
+        folderId: folder.id,
+        name: folder.name,
+        _rev: folder._rev,
+      } satisfies FolderCreatedEvent);
+    }
     for (const scene of state.listScenes()) {
       socket.emit("event", {
         type: "SceneCreated",
         sceneId: scene.id,
         name: scene.name,
         system: scene.system,
+        ...(scene.img !== undefined ? { img: scene.img } : {}),
+        ...(scene.system.folder !== undefined && scene.system.folder !== null ? { folder: scene.system.folder } : {}),
         _rev: scene._rev,
       } satisfies SceneCreatedEvent);
     }
@@ -363,7 +376,13 @@ function handleIntent(
         return;
       }
       const name = typeof intent.name === "string" && intent.name.trim() ? intent.name.trim() : intent.sceneId;
-      const created = state.createScene(intent.sceneId, name, intent.system);
+      const created = state.createScene(
+        intent.sceneId,
+        name,
+        intent.system,
+        intent.img ?? null,
+        intent.folder ?? null,
+      );
       if (!created) {
         socket.emit("intentRejected", { intent, reason: "conflict" });
         return;
@@ -373,6 +392,8 @@ function handleIntent(
         sceneId: created.id,
         name: created.name,
         system: created.system,
+        ...(created.img !== undefined ? { img: created.img } : {}),
+        ...(created.system.folder !== undefined && created.system.folder !== null ? { folder: created.system.folder } : {}),
         _rev: created._rev,
       };
       io.emit("event", ev);
@@ -388,7 +409,13 @@ function handleIntent(
         return;
       }
       const name = typeof intent.name === "string" && intent.name.trim() ? intent.name.trim() : intent.sceneId;
-      const updated = state.updateScene(intent.sceneId, name, intent.system);
+      const updated = state.updateScene(
+        intent.sceneId,
+        name,
+        intent.system,
+        intent.img,
+        intent.folder ?? null,
+      );
       if (!updated) {
         socket.emit("intentRejected", { intent, reason: "not-found" });
         return;
@@ -398,6 +425,8 @@ function handleIntent(
         sceneId: updated.id,
         name: updated.name,
         system: updated.system,
+        ...(updated.img !== undefined ? { img: updated.img } : {}),
+        ...(updated.system.folder !== undefined && updated.system.folder !== null ? { folder: updated.system.folder } : {}),
         _rev: updated._rev,
       };
       io.emit("event", ev);
@@ -423,6 +452,115 @@ function handleIntent(
         state.setActiveSceneId("default");
         const fallback: ActiveSceneChangedEvent = { type: "ActiveSceneChanged", sceneId: "default" };
         io.emit("event", fallback);
+      }
+      return;
+    }
+    case "MoveScene": {
+      if (!isGM) {
+        socket.emit("intentRejected", { intent, reason: "forbidden" });
+        return;
+      }
+      if (typeof intent.sceneId !== "string" || !intent.sceneId) {
+        socket.emit("intentRejected", { intent, reason: "invalid" });
+        return;
+      }
+      const folder = typeof intent.folder === "string" && intent.folder ? intent.folder : null;
+      const updated = state.moveScene(intent.sceneId, folder, intent.index);
+      if (!updated) {
+        socket.emit("intentRejected", { intent, reason: "not-found" });
+        return;
+      }
+      const ev: SceneUpdatedEvent = {
+        type: "SceneUpdated",
+        sceneId: updated.id,
+        name: updated.name,
+        system: updated.system,
+        ...(updated.img !== undefined ? { img: updated.img } : {}),
+        ...(updated.system.folder !== undefined && updated.system.folder !== null ? { folder: updated.system.folder } : {}),
+        _rev: updated._rev,
+      };
+      io.emit("event", ev);
+      return;
+    }
+    case "CreateFolder": {
+      if (!isGM) {
+        socket.emit("intentRejected", { intent, reason: "forbidden" });
+        return;
+      }
+      if (typeof intent.folderId !== "string" || !intent.folderId) {
+        socket.emit("intentRejected", { intent, reason: "invalid" });
+        return;
+      }
+      const name = typeof intent.name === "string" && intent.name.trim() ? intent.name.trim() : intent.folderId;
+      let created;
+      try {
+        created = state.createFolder(intent.folderId, name);
+      } catch {
+        socket.emit("intentRejected", { intent, reason: "conflict" });
+        return;
+      }
+      const ev: FolderCreatedEvent = {
+        type: "FolderCreated",
+        folderId: created.id,
+        name: created.name,
+        _rev: created._rev,
+      };
+      io.emit("event", ev);
+      return;
+    }
+    case "UpdateFolder": {
+      if (!isGM) {
+        socket.emit("intentRejected", { intent, reason: "forbidden" });
+        return;
+      }
+      if (typeof intent.folderId !== "string" || !intent.folderId) {
+        socket.emit("intentRejected", { intent, reason: "invalid" });
+        return;
+      }
+      const name = typeof intent.name === "string" && intent.name.trim() ? intent.name.trim() : intent.folderId;
+      const updated = state.updateFolder(intent.folderId, name);
+      if (!updated) {
+        socket.emit("intentRejected", { intent, reason: "not-found" });
+        return;
+      }
+      const ev: FolderUpdatedEvent = {
+        type: "FolderUpdated",
+        folderId: updated.id,
+        name: updated.name,
+        _rev: updated._rev,
+      };
+      io.emit("event", ev);
+      return;
+    }
+    case "DeleteFolder": {
+      if (!isGM) {
+        socket.emit("intentRejected", { intent, reason: "forbidden" });
+        return;
+      }
+      if (typeof intent.folderId !== "string" || !intent.folderId) {
+        socket.emit("intentRejected", { intent, reason: "invalid" });
+        return;
+      }
+      const { deletedFolders, orphanedScenes } = state.deleteFolder(intent.folderId);
+      if (deletedFolders.length === 0) {
+        socket.emit("intentRejected", { intent, reason: "not-found" });
+        return;
+      }
+      for (const fid of deletedFolders) {
+        const ev: FolderDeletedEvent = { type: "FolderDeleted", folderId: fid };
+        io.emit("event", ev);
+      }
+      for (const scene of orphanedScenes) {
+        const ev: SceneUpdatedEvent = {
+          type: "SceneUpdated",
+          sceneId: scene.id,
+          name: scene.name,
+          system: scene.system,
+          ...(scene.img !== undefined ? { img: scene.img } : {}),
+          ...(scene.system.folder !== undefined && scene.system.folder !== null ? { folder: scene.system.folder } : {}),
+          _rev: scene._rev,
+        };
+        io.emit("event", ev);
       }
       return;
     }
