@@ -29,9 +29,16 @@ export interface SceneSystem {
   width: number;
   height: number;
   background: string | null;
+  folder?: string | null;
+  order?: number;
   grid: { size: number; color: number; type: "square" | "hex" };
 }
 export type Scene = Document<SceneSystem>;
+
+export interface FolderSystem {
+  parent?: null;
+}
+export type Folder = Document<FolderSystem>;
 
 export interface MoveTokenIntent {
   type: "MoveToken";
@@ -65,6 +72,8 @@ export interface CreateSceneIntent {
   // human-readable label. Defaults to sceneId on the server if empty.
   name: string;
   system: SceneSystem;
+  img?: string | null;
+  folder?: string | null;
 }
 
 export interface UpdateSceneIntent {
@@ -72,11 +81,37 @@ export interface UpdateSceneIntent {
   sceneId: string;
   name: string;
   system: SceneSystem;
+  img?: string | null;
+  folder?: string | null;
 }
 
 export interface DeleteSceneIntent {
   type: "DeleteScene";
   sceneId: string;
+}
+
+export interface MoveSceneIntent {
+  type: "MoveScene";
+  sceneId: string;
+  folder?: string | null;
+  index: number;
+}
+
+export interface CreateFolderIntent {
+  type: "CreateFolder";
+  folderId: string;
+  name: string;
+}
+
+export interface UpdateFolderIntent {
+  type: "UpdateFolder";
+  folderId: string;
+  name: string;
+}
+
+export interface DeleteFolderIntent {
+  type: "DeleteFolder";
+  folderId: string;
 }
 
 export interface SendChatMessageIntent {
@@ -93,6 +128,10 @@ export type Intent =
   | CreateSceneIntent
   | UpdateSceneIntent
   | DeleteSceneIntent
+  | MoveSceneIntent
+  | CreateFolderIntent
+  | UpdateFolderIntent
+  | DeleteFolderIntent
   | SendChatMessageIntent;
 
 export interface TokenPositionDiff {
@@ -127,6 +166,8 @@ export interface SceneCreatedEvent {
   sceneId: string;
   name: string;
   system: SceneSystem;
+  img?: string;
+  folder?: string;
   _rev: number;
 }
 
@@ -135,12 +176,33 @@ export interface SceneUpdatedEvent {
   sceneId: string;
   name: string;
   system: SceneSystem;
+  img?: string;
+  folder?: string;
   _rev: number;
 }
 
 export interface SceneDeletedEvent {
   type: "SceneDeleted";
   sceneId: string;
+}
+
+export interface FolderCreatedEvent {
+  type: "FolderCreated";
+  folderId: string;
+  name: string;
+  _rev: number;
+}
+
+export interface FolderUpdatedEvent {
+  type: "FolderUpdated";
+  folderId: string;
+  name: string;
+  _rev: number;
+}
+
+export interface FolderDeletedEvent {
+  type: "FolderDeleted";
+  folderId: string;
 }
 
 export interface ChatMessageEvent {
@@ -172,5 +234,8 @@ export type SceneEvent =
   | SceneCreatedEvent
   | SceneUpdatedEvent
   | SceneDeletedEvent
+  | FolderCreatedEvent
+  | FolderUpdatedEvent
+  | FolderDeletedEvent
   | ChatMessageEvent
   | ChatHistoryEvent;
