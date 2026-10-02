@@ -1,5 +1,5 @@
-import { documents } from "../../state/documents";
-import { BoundInput } from "../bindings";
+import { createBoundInput } from "@rollforge/extension-api/client/binding";
+import type { ClientExtensionAPI } from "@rollforge/extension-api";
 import type { Document } from "@rollforge/protocol";
 
 //  ActorSystem and the typed alias live here because this sheet is
@@ -14,18 +14,19 @@ export type Actor = Document<ActorSystem>;
 
 export interface CustomActorSheetProps {
   documentId: string;
+  api: ClientExtensionAPI;
 }
 
-export function CustomActorSheet({ documentId }: CustomActorSheetProps) {
-  const raw = documents.value.get(documentId);
-  if (!raw) {
+export function CustomActorSheet({ documentId, api }: CustomActorSheetProps) {
+  const doc = api.documents.get<Actor>(documentId);
+  if (!doc) {
     return (
       <div class="p-4 text-xs text-muted">Documento no cargado.</div>
     );
   }
-  const doc = raw as Actor;
   const hp = doc.system.hp;
   const notes = doc.system.notes;
+  const BoundInput = createBoundInput(api);
 
   return (
     <div class="flex flex-col gap-4 p-4 text-xs text-[#e7e9ee]">
