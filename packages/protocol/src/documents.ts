@@ -10,20 +10,14 @@ export interface Document<TSystem = Record<string, unknown>> {
   system: TSystem;
   flags: Record<string, Record<string, unknown>>;
   ownership: Record<string, OwnershipLevel> & { default?: OwnershipLevel };
+  schemaVersion: number;
+  migrationStatus: "ok" | "blocked";
   _rev: number;
 }
 
-export interface ActorSystem {
-  hp: { value: number; max: number };
-  notes: string;
-}
-export type Actor = Document<ActorSystem>;
-
-export interface ItemSystem {
-  quantity: number;
-  weight: number;
-}
-export type Item = Document<ItemSystem>;
+//  base-type shapes for *used* runtime types live next to their owner.
+// ActorSystem / Item were removed — see customActorSheet for the Actor example.
+// Extension authors declare their own System shape alongside their sheet code.
 
 export interface SceneSystem {
   width: number;

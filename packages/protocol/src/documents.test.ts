@@ -17,6 +17,8 @@ describe("Document", () => {
       system: { hp: 7 },
       flags: {},
       ownership: { default: "NONE" },
+      schemaVersion: 0,
+      migrationStatus: "ok",
       _rev: 0,
     };
     expect(doc.system.hp).toBe(7);

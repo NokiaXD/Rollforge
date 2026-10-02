@@ -1,6 +1,7 @@
 import type {
   Document,
   HookName,
+  MigrationChain,
   NotifyHandler,
   FilterHandler,
   DiceResult,
@@ -14,6 +15,42 @@ export interface DocumentsAPI {
   create<T extends Document>(input: Omit<T, "_rev">): Promise<T>;
   update<T extends Document>(id: string, patch: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
+  // Paso 15 — register a chain of single-version migrations for a document
+  // type this extension owns. The chain must be contiguous and end at the
+  // schemaVersion declared in the manifest. Returns ok=false on validation
+  // failures so the host can mark the extension Incompatible without
+  // throwing out of the load loop.
+  registerMigrations<TSystem = Record<string, unknown>>(
+    documentType: string,
+    chain: MigrationChain<TSystem>,
+  ): { ok: true } | { ok: false; reason: string };
+}
+
+export interface BlockedDoc {
+  docId: string;
+  docType: string;
+  prevVersion: number;
+  createdAt: number;
+}
+
+export type MigrationResult =
+  | { ok: true; fromVersion: number; toVersion: number }
+  | { ok: false; atFrom: number; atTo: number; error: string };
+
+//  Narrow admin surface for the /migrations command. Lives on the
+// frozen ServerExtensionAPI so the builtin can recover blocked docs
+// without reaching into host internals (db, registry, lock). The host
+// owns the implementation; the extension only sees an ok/result contract.
+export interface MigrationsAPI {
+  listBlocked(): Promise<BlockedDoc[]>;
+  retry(docId: string): Promise<MigrationResult>;
+  // GM recovery path: substitute the result of a broken step. The chain
+  // continues from there; skipSteps names the `from` versions that should
+  // be skipped (their `up` result is replaced by `systemOverride`).
+  review(
+    docId: string,
+    patch: { skipSteps: number[]; systemOverride?: unknown },
+  ): Promise<MigrationResult>;
 }
 
 export interface ChatSendOptions {
@@ -70,6 +107,7 @@ export interface ServerExtensionAPI {
   chat: ChatAPI;
   dice: DiceAPI;
   users: UsersAPI;
+  migrations: MigrationsAPI;
   context: ServerExtensionContext;
   errors: {
     CommandRejection: typeof CommandRejection;

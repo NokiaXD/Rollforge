@@ -14,6 +14,7 @@ describe("server API freeze", () => {
       } as any,
       dice: {} as any,
       users: {} as any,
+      migrations: {} as any,
       context: { extensionId: "test-ext" },
       errors: { CommandRejection },
     };
@@ -139,5 +140,57 @@ describe("CommandRejection", () => {
     expect(rej).toBeInstanceOf(CommandRejection);
     expect(rej.reason).toBe("bad-notation");
     expect(rej.message).toBe("bad-notation");
+  });
+});
+
+describe("DocumentsAPI.registerMigrations", () => {
+  it("lives on the frozen ServerExtensionAPI surface", () => {
+    const api: ServerExtensionAPI = {
+      documents: {
+        get: async () => null,
+        create: async (input: any) => input as any,
+        update: async (id: string) => ({ id } as any),
+        delete: async () => {},
+        registerMigrations: () => ({ ok: true }),
+      } as any,
+      hooks: {} as any,
+      chat: { send: async () => {}, registerCommand: () => {} } as any,
+      dice: {} as any,
+      users: {} as any,
+      migrations: {} as any,
+      context: { extensionId: "test-ext" },
+      errors: { CommandRejection },
+    };
+    const frozen = freezeServerAPI(api);
+    expect(typeof (frozen.documents as any).registerMigrations).toBe("function");
+    expect(() => {
+      (frozen.documents as any).registerMigrations = () => ({ ok: false, reason: "x" });
+    }).toThrow();
+  });
+});
+
+describe("MigrationsAPI", () => {
+  it("lives on the frozen ServerExtensionAPI surface", () => {
+    const api: ServerExtensionAPI = {
+      documents: {} as any,
+      hooks: {} as any,
+      chat: { send: async () => {}, registerCommand: () => {} } as any,
+      dice: {} as any,
+      users: {} as any,
+      migrations: {
+        listBlocked: async () => [],
+        retry: async () => ({ ok: true, fromVersion: 0, toVersion: 0 }),
+        review: async () => ({ ok: true, fromVersion: 0, toVersion: 0 }),
+      } as any,
+      context: { extensionId: "test-ext" },
+      errors: { CommandRejection },
+    };
+    const frozen = freezeServerAPI(api);
+    expect(typeof (frozen.migrations as any).listBlocked).toBe("function");
+    expect(typeof (frozen.migrations as any).retry).toBe("function");
+    expect(typeof (frozen.migrations as any).review).toBe("function");
+    expect(() => {
+      (frozen.migrations as any).retry = async () => ({ ok: false, atFrom: 0, atTo: 0, error: "x" });
+    }).toThrow();
   });
 });
