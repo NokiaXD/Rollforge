@@ -194,3 +194,76 @@ describe("MigrationsAPI", () => {
     }).toThrow();
   });
 });
+
+// Paso 16 §3.2 / §6 — exhaustive ServerExtensionAPI shape freeze.
+describe("ServerExtensionAPI contract", () => {
+  function makeFullApi(): ServerExtensionAPI {
+    return {
+      documents: {
+        get: async () => null,
+        create: async (input: any) => input as any,
+        update: async (id: string) => ({ id } as any),
+        delete: async () => {},
+        registerMigrations: () => ({ ok: true }),
+      },
+      hooks: { on: () => {}, filter: () => {}, off: () => {} },
+      chat: { send: async () => {}, registerCommand: () => {} },
+      dice: {
+        roll: async () => ({
+          notation: "1d20",
+          terms: [],
+          modifier: 0,
+          total: 0,
+        }),
+      },
+      users: { findByName: () => null },
+      migrations: {
+        listBlocked: async () => [],
+        retry: async () => ({ ok: true, fromVersion: 0, toVersion: 0 }),
+        review: async () => ({ ok: true, fromVersion: 0, toVersion: 0 }),
+      },
+      context: { extensionId: "core:test" },
+      errors: { CommandRejection },
+    };
+  }
+
+  it("exposes exactly the eight documented top-level keys", () => {
+    const frozen = freezeServerAPI(makeFullApi());
+    expect(Object.keys(frozen).sort()).toEqual([
+      "chat",
+      "context",
+      "dice",
+      "documents",
+      "errors",
+      "hooks",
+      "migrations",
+      "users",
+    ]);
+  });
+
+  it("documents surface exposes exactly { get, create, update, delete, registerMigrations }", () => {
+    const frozen = freezeServerAPI(makeFullApi());
+    expect(Object.keys(frozen.documents).sort()).toEqual([
+      "create",
+      "delete",
+      "get",
+      "registerMigrations",
+      "update",
+    ]);
+  });
+
+  it("does not leak `testing` helpers via the frozen runtime API", () => {
+    const frozen = freezeServerAPI(makeFullApi()) as unknown as Record<string, unknown>;
+    expect(frozen["testing"]).toBeUndefined();
+    expect((frozen["documents"] as Record<string, unknown>)?.["runMigration"]).toBeUndefined();
+    expect((frozen["chat"] as Record<string, unknown>)?.["runMigration"]).toBeUndefined();
+  });
+
+  it("deep-freezes functions so they cannot be reassigned on the surface", () => {
+    const frozen = freezeServerAPI(makeFullApi());
+    expect(Object.isFrozen(frozen.documents.get)).toBe(true);
+    expect(() => {
+      (frozen.documents as { get: unknown }).get = async () => null;
+    }).toThrow();
+  });
+});
