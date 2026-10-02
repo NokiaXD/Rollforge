@@ -4,7 +4,7 @@ import { createFolderRequest } from "../net/socket";
 
 export const folders = signal<Map<string, Folder>>(new Map());
 
-// ponytail: "Nueva carpeta (n)" con el primer n libre; renombrar después desde el menú contextual.
+//  "Nueva carpeta (n)" con el primer n libre; renombrar después desde el menú contextual.
 export function createFolder(): void {
   const taken = new Set([...folders.value.values()].map((f) => f.name));
   for (let i = 1; ; i++) {

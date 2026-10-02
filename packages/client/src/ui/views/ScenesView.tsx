@@ -168,6 +168,8 @@ export function ScenesView() {
 
   const empty = allScenes.length === 0 && allFolders.length === 0;
 
+  if (!isGM) return null;
+
   //  context-menu items for right-clicks. Builders so each handler is fresh.
   const sceneContextItems = (scene: Scene): ContextMenuItem[] => {
     const isActive = activeSceneId.value === scene.id;

@@ -20,6 +20,7 @@ import {
   type Token,
 } from "../state/scene";
 import { appendMessage, replaceMessages } from "../state/chat";
+import { upsertDocument } from "../state/documents";
 
 let socket: Socket | null = null;
 let lastJoinedScene: string | null = null;
@@ -97,6 +98,10 @@ export function connectSocket(): Socket {
 
   socket.on("chatHistory", (h: ChatHistoryEvent) => {
     replaceMessages(h.messages);
+  });
+
+  socket.on("documentUpdated", (ev: { type: "DocumentUpdated"; document: import("@rollforge/protocol").Document }) => {
+    upsertDocument(ev.document);
   });
 
   // Sync joinScene/leaveScene with currentSceneId (derived from role).

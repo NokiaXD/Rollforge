@@ -10,7 +10,7 @@
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "lint": "eslint \"packages/*/src/**/*.ts\""
+    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/src/**/*.tsx\""
   },
   "devDependencies": {
     "eslint": "^10.11.0",

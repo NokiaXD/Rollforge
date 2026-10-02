@@ -23,6 +23,8 @@ import { SceneFormModal } from "./SceneFormModal";
 import { FolderFormModal } from "./FolderFormModal";
 import { FolderDeleteModal } from "./FolderDeleteModal";
 import { ContextMenu } from "./ContextMenu";
+import { SheetModal } from "./SheetModal";
+import "../extensions/bootstrap";
 import { createPixi } from "../canvas/pixiApp";
 import { drawGrid } from "../canvas/grid";
 import { drawBackground, type BackgroundHandle } from "../canvas/background";
@@ -205,6 +207,7 @@ export function App() {
       <FolderFormModal />
       <FolderDeleteModal />
       <ContextMenu />
+      <SheetModal />
     </div>
   );
 }

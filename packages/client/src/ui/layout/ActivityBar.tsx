@@ -23,10 +23,16 @@ export function ActivityBar() {
   const user = currentUser.value;
   const isGM = user?.role === "GM";
 
-  const items: ActivityItem[] = [
-    { id: "scenes", label: "Gestor de Escenas", icon: "\uec05" },
-    { id: "tokens", label: "Tokens en Escena", icon: "\uedca" },
-  ];
+  const items: ActivityItem[] = isGM
+    ? [
+        { id: "scenes", label: "Gestor de Escenas", icon: "\uec05" },
+        { id: "actors", label: "Actores y Fichas", icon: "\ue902" },
+        { id: "tokens", label: "Tokens en Escena", icon: "\uedca" },
+      ]
+    : [
+        { id: "actors", label: "Mis Actores", icon: "\ue902" },
+        { id: "tokens", label: "Tokens en Escena", icon: "\uedca" },
+      ];
 
   const handleUserMenu = (e: MouseEvent) => {
     e.preventDefault();

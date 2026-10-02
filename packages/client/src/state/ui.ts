@@ -1,8 +1,9 @@
 import { signal } from "@preact/signals";
 
-export type SidebarTab = "scenes" | "tokens";
+export type SidebarTab = "scenes" | "tokens" | "actors";
 
 export const activeSidebarTab = signal<SidebarTab | null>("scenes");
+export const openDocument = signal<string | null>(null);
 export const gmUsersModalOpen = signal<boolean>(false);
 export const settingsModalOpen = signal<boolean>(false);
 
