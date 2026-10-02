@@ -75,6 +75,9 @@ importers:
 
   packages/extension-api:
     dependencies:
+      '@preact/signals':
+        specifier: ^1.3.0
+        version: 1.3.4(preact@10.29.8)
       '@rollforge/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -82,6 +85,9 @@ importers:
         specifier: ^10.24.0
         version: 10.29.8
     devDependencies:
+      jsdom:
+        specifier: ^30.1.1
+        version: 30.1.1
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@26.6.3)(jsdom@30.1.1)(lightningcss@1.32.0)
