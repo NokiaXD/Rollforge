@@ -58,5 +58,29 @@ describe("builtins boundary linting", () => {
       filePath: resolve(rootDir, "packages/server/src/extensions/builtins/good.ts"),
     });
     expect(res4[0]?.errorCount).toBe(0);
+
+    // 5. Paso 16 — same boundary rules apply to .tsx files. Negative case:
+    // a builtin .tsx that reaches into the host's state module triggers
+    // no-restricted-imports. Regression guard for the glob fix in
+    // eslint.config.js (was `**/*.ts` only).
+    const badTsxImport = `
+      import { foo } from "../../state/documents";
+      export function probe() { return foo; }
+    `;
+    const res5 = await eslint.lintText(badTsxImport, {
+      filePath: resolve(rootDir, "packages/client/src/extensions/builtins/badClientBuiltin.tsx"),
+    });
+    expect(res5[0]?.messages.some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
+
+    // 6. Positive case: a builtin .tsx with an allowed import lints clean.
+    // Confirms the rule does not over-fire on .tsx files.
+    const goodTsxImport = `
+      import { useState } from "preact/hooks";
+      export function probe() { return useState; }
+    `;
+    const res6 = await eslint.lintText(goodTsxImport, {
+      filePath: resolve(rootDir, "packages/client/src/extensions/builtins/goodClientBuiltin.tsx"),
+    });
+    expect(res6[0]?.errorCount).toBe(0);
   });
 });

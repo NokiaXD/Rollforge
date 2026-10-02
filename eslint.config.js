@@ -13,7 +13,7 @@ export default [
     rules: {},
   },
   {
-    files: ["**/builtins/**/*.ts", "packages/server/src/extensions/builtins/**/*.ts"],
+    files: ["**/builtins/**/*.{ts,tsx}", "packages/server/src/extensions/builtins/**/*.{ts,tsx}"],
     ignores: ["**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
