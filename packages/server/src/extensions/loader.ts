@@ -86,8 +86,13 @@ export async function loadExtensions(
     }
     try {
       const entry = await loadExtensionEntry(disc);
-      manager.registerExtension(entry);
-      result.loaded.push(id);
+      const regResult = manager.registerExtension(entry);
+      if (regResult.ok) {
+        result.loaded.push(id);
+      } else {
+        result.failed.push({ id, error: regResult.reason });
+        console.error(`[extensions] ${id}: ${regResult.reason}`);
+      }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       result.failed.push({ id, error });

@@ -183,17 +183,31 @@ describe("Paso 12 — Extension architecture & Dogfood (socket.dogfood.test.ts)"
     carol.socket.disconnect();
   });
 
-  // Moved test verbatim
-  it("whisper is not persisted: recent() returns no messages after a restart", async () => {
+  it("whisper is persisted: saved in chatStore and delivered in chatHistory to sender/recipient", async () => {
     alice.socket.emit("chatMessage", { text: "/w bob secret" });
     await new Promise((r) => setTimeout(r, 80));
-    expect(chatStore.recent(50)).toEqual([]);
 
-    alice.socket.emit("chatMessage", { text: "public hello" });
-    await new Promise((r) => setTimeout(r, 80));
-    const out = chatStore.recent(50);
-    expect(out).toHaveLength(1);
-    expect(out[0]?.text).toBe("public hello");
+    // Whisper is persisted in chatStore
+    const all = chatStore.recent(50);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.text).toBe("secret");
+    expect(all[0]?.whisperTo).toBe("bob");
+
+    // Alice reconnects and sees the whisper in chatHistory
+    const alice2 = await connect(port, aliceCookie);
+    expect(alice2.chatHistory?.messages.some((m) => m.text === "secret")).toBe(true);
+    alice2.socket.disconnect();
+
+    // Bob reconnects and sees the whisper in chatHistory
+    const bob2 = await connect(port, bobCookie);
+    expect(bob2.chatHistory?.messages.some((m) => m.text === "secret")).toBe(true);
+    bob2.socket.disconnect();
+
+    // A third user (carol) connects and does NOT see the whisper in chatHistory
+    const carolCookie = await register("carol-persisted", "pwpwpwpw");
+    const carol = await connect(port, carolCookie);
+    expect(carol.chatHistory?.messages.some((m) => m.text === "secret")).toBe(false);
+    carol.socket.disconnect();
   });
 
   // Moved test verbatim

@@ -16,6 +16,8 @@ function docWith(ownership: Document<unknown>["ownership"]): Document<unknown> {
     system: {},
     flags: {},
     ownership,
+    schemaVersion: 0,
+    migrationStatus: "ok",
     _rev: 0,
   };
 }

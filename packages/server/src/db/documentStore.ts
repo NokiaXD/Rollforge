@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS documents (
   name TEXT NOT NULL,
   data TEXT NOT NULL,
   rev INTEGER NOT NULL DEFAULT 0,
+  schema_version INTEGER NOT NULL DEFAULT 0,
+  migration_status TEXT NOT NULL DEFAULT 'ok',
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
@@ -19,15 +21,33 @@ interface Row {
   name: string;
   data: string;
   rev: number;
+  schema_version: number;
+  migration_status: "ok" | "blocked";
   updated_at: number;
 }
 
-export class DocumentStore {
-  // shared handle from openWorldDb. Never exposed to consumers.
-  private readonly db: DB;
+// schemaVersion and migrationStatus are optional on the create path so
+// callers don't need to thread them through every save(); they're always
+// present on the read path (Document shape). The runner resolves a default
+// for new docs via opts.getCurrentSchemaVersion, else 0 — true legacy rows
+// pre-column also land at 0 because of the SQLite DEFAULT clause.
+export interface DocumentStoreOpts {
+  getCurrentSchemaVersion?: (type: string) => number | undefined;
+}
 
-  constructor(db: DB) {
+export type DocumentInput<TSystem = Record<string, unknown>> =
+  Omit<Document<TSystem>, "_rev" | "schemaVersion" | "migrationStatus"> & {
+    schemaVersion?: number;
+    migrationStatus?: Document["migrationStatus"];
+  };
+
+export class DocumentStore {
+  private readonly db: DB;
+  private readonly getCurrentSchemaVersion: (type: string) => number | undefined;
+
+  constructor(db: DB, opts: DocumentStoreOpts = {}) {
     this.db = db;
+    this.getCurrentSchemaVersion = opts.getCurrentSchemaVersion ?? (() => undefined);
     this.db.exec(SCHEMA);
   }
 
@@ -37,7 +57,9 @@ export class DocumentStore {
 
   getById<T = unknown>(id: string): Document<T> | null {
     const row = this.db
-      .prepare<[string], Row>("SELECT id, type, name, data, rev, updated_at FROM documents WHERE id = ?")
+      .prepare<[string], Row>(
+        "SELECT id, type, name, data, rev, schema_version, migration_status, updated_at FROM documents WHERE id = ?",
+      )
       .get(id);
     return row ? this.toDoc<T>(row) : null;
   }
@@ -45,24 +67,35 @@ export class DocumentStore {
   getByType<T = unknown>(type: string): Document<T>[] {
     const rows = this.db
       .prepare<[string], Row>(
-        "SELECT id, type, name, data, rev, updated_at FROM documents WHERE type = ? ORDER BY id",
+        "SELECT id, type, name, data, rev, schema_version, migration_status, updated_at FROM documents WHERE type = ? ORDER BY id",
       )
       .all(type);
     return rows.map((r) => this.toDoc<T>(r));
   }
 
-  save<TSystem>(doc: Omit<Document<TSystem>, "_rev">): Document<TSystem> {
-    const tx = this.db.transaction((input: Omit<Document<TSystem>, "_rev">) => {
+  save<TSystem>(doc: DocumentInput<TSystem>): Document<TSystem> {
+    const tx = this.db.transaction((input: DocumentInput<TSystem>) => {
       const existing = this.db.prepare("SELECT id FROM documents WHERE id = ?").get(input.id);
       if (existing) throw new Error(`document ${input.id} already exists; use update()`);
+      const schemaVersion =
+        input.schemaVersion ?? this.getCurrentSchemaVersion(input.type) ?? 0;
+      const migrationStatus = input.migrationStatus ?? "ok";
       const now = Date.now();
       const rest = this.serializeRest(input);
       this.db
         .prepare(
-          "INSERT INTO documents (id, type, name, data, rev, updated_at) VALUES (?, ?, ?, ?, 0, ?)",
+          "INSERT INTO documents (id, type, name, data, rev, schema_version, migration_status, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)",
         )
-        .run(input.id, input.type, input.name, JSON.stringify(rest), now);
-      return { ...input, _rev: 0 };
+        .run(
+          input.id,
+          input.type,
+          input.name,
+          JSON.stringify(rest),
+          schemaVersion,
+          migrationStatus,
+          now,
+        );
+      return { ...input, schemaVersion, migrationStatus, _rev: 0 };
     });
     return tx(doc);
   }
@@ -71,7 +104,7 @@ export class DocumentStore {
     const tx = this.db.transaction((input: Document<TSystem>, rev: number) => {
       const row = this.db
         .prepare<[string], Row>(
-          "SELECT id, type, name, data, rev, updated_at FROM documents WHERE id = ?",
+          "SELECT id, type, name, rev, schema_version, migration_status, data, updated_at FROM documents WHERE id = ?",
         )
         .get(input.id);
       if (!row) throw new Error(`document ${input.id} not found`);
@@ -81,9 +114,18 @@ export class DocumentStore {
       const rest = this.serializeRest(input);
       this.db
         .prepare(
-          "UPDATE documents SET type = ?, name = ?, data = ?, rev = ?, updated_at = ? WHERE id = ?",
+          "UPDATE documents SET type = ?, name = ?, data = ?, rev = ?, schema_version = ?, migration_status = ?, updated_at = ? WHERE id = ?",
         )
-        .run(input.type, input.name, JSON.stringify(rest), newRev, now, input.id);
+        .run(
+          input.type,
+          input.name,
+          JSON.stringify(rest),
+          newRev,
+          input.schemaVersion,
+          input.migrationStatus,
+          now,
+          input.id,
+        );
       return { ...input, _rev: newRev };
     });
     return tx(doc, expectedRev);
@@ -116,16 +158,17 @@ export class DocumentStore {
       ownership: Document<T>["ownership"];
       img?: string;
     };
-    const out: Document<T> = {
+    return {
       id: row.id,
       type: row.type,
       name: row.name,
       system: data.system,
       flags: data.flags,
       ownership: data.ownership,
+      ...(data.img !== undefined ? { img: data.img } : {}),
+      schemaVersion: row.schema_version,
+      migrationStatus: row.migration_status,
       _rev: row.rev,
     };
-    if (data.img !== undefined) out.img = data.img;
-    return out;
   }
 }

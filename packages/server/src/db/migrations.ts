@@ -41,6 +41,45 @@ export function migrate(db: DB): void {
         ALTER TABLE chat_messages ADD COLUMN actor_name TEXT;
       `);
     }
+    if (from < 3) {
+      db.exec(`
+        ALTER TABLE chat_messages ADD COLUMN whisper_to TEXT;
+      `);
+    }
+    if (from < 4) {
+      // Paso 15: per-document schemaVersion + migration gate state. Default 0
+      // matches the registry's missing-version contract — legacy rows and
+      // never-migrated types both read as v0 until a migration runs.
+      // The documents table itself is created here at v4; DocumentStore's
+      // own CREATE TABLE IF NOT EXISTS is a no-op for fresh DBs and a
+      // safety net for the test path that opens DBs without the migration
+      // runner (we never actually do that anymore, but the dual create is
+      // harmless and keeps the store usable in isolation).
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS documents (
+          id              TEXT    PRIMARY KEY,
+          type            TEXT    NOT NULL,
+          name            TEXT    NOT NULL,
+          data            TEXT    NOT NULL,
+          rev             INTEGER NOT NULL DEFAULT 0,
+          schema_version  INTEGER NOT NULL DEFAULT 0,
+          migration_status TEXT   NOT NULL DEFAULT 'ok',
+          updated_at      INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
+        CREATE TABLE IF NOT EXISTS document_migration_snapshots (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_id        TEXT    NOT NULL,
+          doc_type      TEXT    NOT NULL,
+          prev_version  INTEGER NOT NULL,
+          new_version   INTEGER NOT NULL,
+          status        TEXT    NOT NULL CHECK (status IN ('ok','failed')),
+          snapshot_json TEXT    NOT NULL,
+          created_at    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mig_snap_doc ON document_migration_snapshots(doc_id);
+      `);
+    }
     db.prepare(`INSERT OR REPLACE INTO _meta (key, v) VALUES ('coreSchemaVersion', ?)`).run(
       CORE_SCHEMA_VERSION,
     );

@@ -32,6 +32,13 @@ const DEFAULT_LOCK_TTL_MS = 5000;
 export type SceneDoc = Document<SceneSystem>;
 export type FolderDoc = Document<FolderSystem>;
 
+export const ACTIVE_SCENE_DOC_ID = "active-scene";
+
+export interface ActiveSceneSystem {
+  sceneId: string;
+}
+export type ActiveSceneDoc = Document<ActiveSceneSystem>;
+
 function defaultSceneSystem(): SceneSystem {
   return {
     width: 25000,
@@ -64,7 +71,10 @@ export class SceneState {
   }
 
   setActiveSceneId(id: string): void {
-    if (typeof id === "string" && id.length > 0) this.activeSceneId = id;
+    if (typeof id === "string" && id.length > 0) {
+      this.activeSceneId = id;
+      this.persistActiveScene(id);
+    }
   }
 
   getScene(id: string): SceneDoc | undefined {
@@ -95,13 +105,22 @@ export class SceneState {
     for (const doc of this.store.getByType<FolderSystem>("Folder")) {
       this.folders.set(doc.id, doc);
     }
+    const activeDoc = this.store.getById<ActiveSceneSystem>(ACTIVE_SCENE_DOC_ID);
+    if (activeDoc && typeof activeDoc.system?.sceneId === "string") {
+      this.activeSceneId = activeDoc.system.sceneId;
+    }
   }
 
   private ensureDefaultScene(): void {
-    if (this.scenes.has("default")) return;
-    const doc = this.makeSceneDoc("default", "Default", defaultSceneSystem());
-    this.scenes.set("default", doc);
-    this.store?.save(doc);
+    if (!this.scenes.has("default")) {
+      const doc = this.makeSceneDoc("default", "Default", defaultSceneSystem());
+      this.scenes.set("default", doc);
+      this.store?.save(doc);
+    }
+    if (!this.scenes.has(this.activeSceneId)) {
+      this.activeSceneId = "default";
+      this.persistActiveScene("default");
+    }
   }
 
   createScene(sceneId: string, name: string, system: SceneSystem, img?: string | null, folder?: string | null): SceneDoc {
@@ -131,12 +150,15 @@ export class SceneState {
     if (!existing) return false;
     this.scenes.delete(sceneId);
     this.store?.delete(sceneId);
+    if (this.activeSceneId === sceneId) {
+      this.setActiveSceneId("default");
+    }
     return true;
   }
 
   //  order is a midpoint between its neighbours, never index*1000: reordering used to
   //  assign a colliding order to the moved scene and it snapped back on the next reload.
-  //  ponytail: gaps halve on every insert; re-number the list when one hits 0.
+  //   gaps halve on every insert; re-number the list when one hits 0.
   moveScene(sceneId: string, folder: string | null, index: number): SceneDoc | null {
     const scene = this.scenes.get(sceneId);
     if (!scene) return null;
@@ -175,6 +197,8 @@ export class SceneState {
       system: {},
       flags: {},
       ownership: { default: "LIMITED" },
+      schemaVersion: 0,
+      migrationStatus: "ok",
       _rev: 0,
     };
     this.folders.set(folderId, doc);
@@ -217,6 +241,8 @@ export class SceneState {
       system: { ...system, folder: folder ?? system.folder ?? null },
       flags: {},
       ownership: { default: "LIMITED" },
+      schemaVersion: 0,
+      migrationStatus: "ok",
       _rev: 0,
     };
     if (img) doc.img = img;
@@ -310,6 +336,28 @@ export class SceneState {
     this.store?.update(this.toDoc(token), token._rev - 1);
   }
 
+  private persistActiveScene(id: string): void {
+    if (!this.store) return;
+    const existing = this.store.getById<ActiveSceneSystem>(ACTIVE_SCENE_DOC_ID);
+    if (existing) {
+      existing.system = { sceneId: id };
+      this.store.update(existing, existing._rev);
+    } else {
+      const doc: Document<ActiveSceneSystem> = {
+        id: ACTIVE_SCENE_DOC_ID,
+        type: "Setting",
+        name: "Active Scene",
+        system: { sceneId: id },
+        flags: {},
+        ownership: { default: "LIMITED" },
+        schemaVersion: 0,
+        migrationStatus: "ok",
+        _rev: 0,
+      };
+      this.store.save(doc);
+    }
+  }
+
   private toDoc(token: TokenRecord): Document<TokenSystem> {
     return {
       id: token.id,
@@ -324,6 +372,8 @@ export class SceneState {
       },
       flags: {},
       ownership: token.ownership,
+      schemaVersion: 0,
+      migrationStatus: "ok",
       _rev: token._rev,
     };
   }

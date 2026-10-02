@@ -13,11 +13,13 @@ import { LoginRateLimiter } from "./auth/rateLimit";
 import { authMiddleware, parseCookies } from "./auth/middleware";
 import { createAuthRouter } from "./auth/routes";
 import { createUploadsRouter } from "./uploads";
+import { createDocumentRouter } from "./db/documentRoutes";
 import type { Database as DB } from "better-sqlite3";
 import { ExtensionManager, type ExtensionEntry } from "./extensions/manager";
 import { loadExtensions } from "./extensions/loader";
 import { ChatCommandRegistry } from "./extensions/registry";
 import * as chatDice from "./extensions/builtins/chatDice";
+import * as migrationsBuiltin from "./extensions/builtins/migrations";
 import { HooksEngine, type ChatSendOptions } from "@rollforge/extension-api";
 import { invocationStorage } from "./sync/invocationContext";
 import type { ChatMessageEvent, Document, RollActor } from "@rollforge/protocol";
@@ -56,7 +58,7 @@ export interface RollforgeServer {
   close: () => Promise<void>;
 }
 
-const BUILTINS: ExtensionEntry[] = [chatDice];
+const BUILTINS: ExtensionEntry[] = [chatDice, migrationsBuiltin];
 
 export function createRollforgeServer(opts: RollforgeServerOpts = {}): RollforgeServer {
   const app = express();
@@ -104,6 +106,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     hooks,
     commandRegistry,
     activationTimeoutMs: opts.activationTimeoutMs,
+    getDocumentDb: () => worldDb,
     getUsersAPI: () => ({
       findByName: (name: string) => {
         const target = name.trim().toLowerCase();
@@ -160,18 +163,31 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
           }
         }
         const whisperToName = recipientUsername ?? chatOpts.to;
-        const ev: ChatMessageEvent = {
-          type: "ChatMessage",
-          seq: 0,
-          id: `w-${now}-${senderUserId}`,
-          userId: senderUserId,
-          username: senderUsername,
-          role: senderRole,
-          kind: "chat",
-          text: message,
-          createdAt: now,
-          ...(whisperToName ? { whisperTo: whisperToName } : {}),
-        };
+        let ev: ChatMessageEvent;
+        if (chatStore) {
+          ev = chatStore.append({
+            userId: senderUserId,
+            username: senderUsername,
+            role: senderRole,
+            kind: "chat",
+            text: message,
+            ...(whisperToName ? { whisperTo: whisperToName } : {}),
+            createdAt: now,
+          });
+        } else {
+          ev = {
+            type: "ChatMessage",
+            seq: 0,
+            id: `w-${now}-${senderUserId}`,
+            userId: senderUserId,
+            username: senderUsername,
+            role: senderRole,
+            kind: "chat",
+            text: message,
+            createdAt: now,
+            ...(whisperToName ? { whisperTo: whisperToName } : {}),
+          };
+        }
         let emitter = io.to(`user:${senderUserId}`);
         if (chatOpts.to) {
           emitter = emitter.to(`user:${chatOpts.to}`);
@@ -236,9 +252,18 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const shouldRegisterBuiltins = opts.registerBuiltins ?? true;
   if (shouldRegisterBuiltins) {
     for (const b of BUILTINS) {
-      extensions.registerExtension(b);
+      const r = extensions.registerExtension(b);
+      if (!r.ok) {
+        console.error(`[extensions] builtin "${b.manifest.id}" rejected: ${r.reason}`);
+      }
     }
   }
+
+  // /migrations is a builtin (packages/server/src/extensions/builtins/migrations.ts)
+  // — it consumes the narrow api.migrations surface (listBlocked/retry/review)
+  // and goes through the normal register → activate lifecycle so the builtins
+  // lint boundary keeps privileged code inside the same fence as everything
+  // else.
 
   // Disk extensions must be registered before the first activation dispatch,
   // otherwise an `onReady` extension is never seen.
@@ -270,6 +295,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
 
     app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
+    app.use("/api/documents", createDocumentRouter({ store, io, extensionManager: extensions }));
 
     io.use((socket, next) => {
       const cookies = parseCookies(socket.handshake.headers.cookie);
@@ -297,6 +323,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   } else {
     app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
+    app.use("/api/documents", createDocumentRouter({ store, io, extensionManager: extensions }));
     attachSync(io, {
       state,
       users,

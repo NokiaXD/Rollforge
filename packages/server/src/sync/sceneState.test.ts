@@ -52,6 +52,49 @@ describe("SceneState persistence", () => {
     expect(t1?._rev).toBe(0);
   });
 
+  it("activeSceneId survives a server restart via DocumentStore", () => {
+    const db1 = openDb();
+    const store1 = new DocumentStore(db1);
+    const state1 = new SceneState({ store: store1 });
+    state1.createScene("dungeon", "Dungeon", {
+      width: 4000,
+      height: 4000,
+      background: null,
+      grid: { size: 50, color: 0x2c313a, type: "square" },
+    });
+    state1.setActiveSceneId("dungeon");
+    expect(state1.getActiveSceneId()).toBe("dungeon");
+    db1.close();
+    openDbs.length = 0;
+
+    const db2 = openDb();
+    const store2 = new DocumentStore(db2);
+    const state2 = new SceneState({ store: store2 });
+    expect(state2.getActiveSceneId()).toBe("dungeon");
+  });
+
+  it("deleting the active scene resets activeSceneId to default and persists it", () => {
+    const db1 = openDb();
+    const store1 = new DocumentStore(db1);
+    const state1 = new SceneState({ store: store1 });
+    state1.createScene("dungeon", "Dungeon", {
+      width: 4000,
+      height: 4000,
+      background: null,
+      grid: { size: 50, color: 0x2c313a, type: "square" },
+    });
+    state1.setActiveSceneId("dungeon");
+    state1.deleteScene("dungeon");
+    expect(state1.getActiveSceneId()).toBe("default");
+    db1.close();
+    openDbs.length = 0;
+
+    const db2 = openDb();
+    const store2 = new DocumentStore(db2);
+    const state2 = new SceneState({ store: store2 });
+    expect(state2.getActiveSceneId()).toBe("default");
+  });
+
 it("moveToken persists new position and bumps _rev", () => {
     const db = openDb();
     const store = new DocumentStore(db);

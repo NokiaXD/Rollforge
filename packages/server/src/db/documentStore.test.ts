@@ -32,6 +32,8 @@ const sampleToken = (id: string): Omit<Document, "_rev"> => ({
   system: { sceneId: "scene-1", x: 0, y: 0, w: 1, h: 1 },
   flags: {},
   ownership: {},
+  schemaVersion: 0,
+  migrationStatus: "ok",
 });
 
 describe("DocumentStore", () => {
@@ -118,6 +120,63 @@ describe("DocumentStore", () => {
     expect(store.delete("gone")).toBe(true);
     expect(store.getById("gone")).toBeNull();
     expect(store.delete("gone")).toBe(false);
+    db.close();
+  });
+
+  it("defaults schemaVersion to 0 and migrationStatus to 'ok' on save with no callback", () => {
+    const db = openTestDb(dbPath);
+    const store = new DocumentStore(db);
+    const saved = store.save(sampleToken("plain"));
+    expect(saved.schemaVersion).toBe(0);
+    expect(saved.migrationStatus).toBe("ok");
+    db.close();
+  });
+
+  it("resolves schemaVersion from getCurrentSchemaVersion callback when caller omits it", () => {
+    const db = openTestDb(dbPath);
+    const store = new DocumentStore(db, {
+      getCurrentSchemaVersion: (type) => (type === "Actor" ? 7 : undefined),
+    });
+    const saved = store.save({
+      id: "npc-1",
+      type: "Actor",
+      name: "Goblin",
+      system: { hp: 7 },
+      flags: {},
+      ownership: {},
+    });
+    expect(saved.schemaVersion).toBe(7);
+    expect(saved.migrationStatus).toBe("ok");
+    db.close();
+  });
+
+  it("respects caller-provided schemaVersion over the callback default", () => {
+    const db = openTestDb(dbPath);
+    const store = new DocumentStore(db, {
+      getCurrentSchemaVersion: () => 7,
+    });
+    const saved = store.save({
+      ...sampleToken("explicit"),
+      schemaVersion: 4,
+    });
+    expect(saved.schemaVersion).toBe(4);
+    db.close();
+  });
+
+  it("round-trips schemaVersion and migrationStatus through update", () => {
+    const db = openTestDb(dbPath);
+    const store = new DocumentStore(db);
+    const saved = store.save(sampleToken("rt"));
+    const moved = store.update(
+      { ...saved, schemaVersion: 2, migrationStatus: "blocked" },
+      saved._rev,
+    );
+    expect(moved.schemaVersion).toBe(2);
+    expect(moved.migrationStatus).toBe("blocked");
+
+    const refetched = store.getById("rt");
+    expect(refetched?.schemaVersion).toBe(2);
+    expect(refetched?.migrationStatus).toBe("blocked");
     db.close();
   });
 });

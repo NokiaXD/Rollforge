@@ -1,7 +1,7 @@
 import Database, { type Database as DB } from "better-sqlite3";
 import { migrate } from "./migrations";
 
-export const CORE_SCHEMA_VERSION = 2;
+export const CORE_SCHEMA_VERSION = 4;
 
 // single owner of the world SQLite handle. Both DocumentStore and ChatStore
 // receive this DB by constructor; neither exposes it. Recreate via openWorldDb() per process.

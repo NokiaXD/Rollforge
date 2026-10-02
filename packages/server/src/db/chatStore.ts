@@ -15,7 +15,16 @@ interface ChatRow {
   actor_type: "user" | "character" | null;
   actor_id: string | null;
   actor_name: string | null;
+  whisper_to: string | null;
   created_at: number;
+}
+
+export interface RecentOptions {
+  beforeSeq?: number;
+  forUser?: {
+    userId: string;
+    username?: string;
+  };
 }
 
 interface InsertChatEvent {
@@ -27,6 +36,7 @@ interface InsertChatEvent {
   rolls?: DiceRoll[];
   result?: DiceResult;
   actor?: RollActor;
+  whisperTo?: string;
   createdAt: number;
 }
 
@@ -54,8 +64,8 @@ export class ChatStore {
       const stmt = this.db.prepare(
         `INSERT INTO chat_messages
            (id, user_id, username, role, kind, text, rolls_json, result_json,
-            actor_type, actor_id, actor_name, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            actor_type, actor_id, actor_name, whisper_to, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const info = stmt.run(
         id,
@@ -73,6 +83,7 @@ export class ChatStore {
             ? input.actor.userId
             : null,
         input.actor?.name ?? null,
+        input.whisperTo ?? null,
         input.createdAt,
       );
       return Number(info.lastInsertRowid);
@@ -94,35 +105,57 @@ export class ChatStore {
       if (ev.result) out.result = ev.result;
     }
     if (ev.actor) out.actor = ev.actor;
+    if (ev.whisperTo) out.whisperTo = ev.whisperTo;
     return out;
   }
 
   // Returns the last `limit` messages in ascending seq order. If `beforeSeq` is provided,
   // only messages with seq < beforeSeq are returned (for pagination).
-  recent(limit: number, beforeSeq?: number): ChatMessageEvent[] {
+  // If `forUser` is provided, whispers are scoped so that only the sender and recipient can see them.
+  recent(limit: number, beforeSeqOrOpts?: number | RecentOptions, maybeOpts?: RecentOptions): ChatMessageEvent[] {
     const cap = Math.max(0, Math.min(limit, 1000));
-    if (beforeSeq === undefined) {
-      const rows = this.db
-        .prepare<[number], ChatRow>(
-          `SELECT seq, id, user_id, username, role, kind, text, rolls_json, result_json,
-                  actor_type, actor_id, actor_name, created_at
-             FROM chat_messages
-            ORDER BY seq DESC
-            LIMIT ?`,
-        )
-        .all(cap);
-      return rows.reverse().map(this.toEvent);
+    let beforeSeq: number | undefined;
+    let opts: RecentOptions | undefined;
+
+    if (typeof beforeSeqOrOpts === "number") {
+      beforeSeq = beforeSeqOrOpts;
+      opts = maybeOpts;
+    } else if (beforeSeqOrOpts && typeof beforeSeqOrOpts === "object") {
+      beforeSeq = beforeSeqOrOpts.beforeSeq;
+      opts = beforeSeqOrOpts;
     }
-    const rows = this.db
-      .prepare<[number, number], ChatRow>(
-        `SELECT seq, id, user_id, username, role, kind, text, rolls_json, result_json,
-                actor_type, actor_id, actor_name, created_at
-           FROM chat_messages
-          WHERE seq < ?
-          ORDER BY seq DESC
-          LIMIT ?`,
-      )
-      .all(beforeSeq, cap);
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (beforeSeq !== undefined) {
+      conditions.push("seq < ?");
+      params.push(beforeSeq);
+    }
+
+    if (opts?.forUser) {
+      const { userId, username } = opts.forUser;
+      if (username) {
+        conditions.push("(whisper_to IS NULL OR user_id = ? OR whisper_to = ? OR whisper_to = ?)");
+        params.push(userId, userId, username);
+      } else {
+        conditions.push("(whisper_to IS NULL OR user_id = ? OR whisper_to = ?)");
+        params.push(userId, userId);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sql = `
+      SELECT seq, id, user_id, username, role, kind, text, rolls_json, result_json,
+             actor_type, actor_id, actor_name, whisper_to, created_at
+        FROM chat_messages
+       ${whereClause}
+       ORDER BY seq DESC
+       LIMIT ?
+    `;
+    params.push(cap);
+
+    const rows = this.db.prepare(sql).all(...params) as ChatRow[];
     return rows.reverse().map(this.toEvent);
   }
 
@@ -138,6 +171,9 @@ export class ChatStore {
       text: row.text,
       createdAt: row.created_at,
     };
+    if (row.whisper_to) {
+      ev.whisperTo = row.whisper_to;
+    }
     if (row.kind === "roll") {
       try {
         if (row.rolls_json) ev.rolls = JSON.parse(row.rolls_json) as DiceRoll[];

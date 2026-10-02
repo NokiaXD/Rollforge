@@ -154,4 +154,38 @@ describe("ChatStore", () => {
     }
     expect(() => openWorldDb(dbPath)).toThrow(/world-schema-newer/);
   });
+
+  it("persists whispers and filters them by forUser in recent()", () => {
+    const store = new ChatStore(openDb());
+    store.append(chatEvent("public message"));
+    store.append({
+      userId: "alice",
+      username: "alice",
+      role: "Player",
+      kind: "chat",
+      text: "secret to bob",
+      whisperTo: "bob",
+      createdAt: Date.now(),
+    });
+
+    // Unfiltered recent returns both
+    const all = store.recent(10);
+    expect(all).toHaveLength(2);
+    expect(all[1]?.whisperTo).toBe("bob");
+
+    // Alice (sender) sees the whisper
+    const aliceRecent = store.recent(10, { forUser: { userId: "alice", username: "alice" } });
+    expect(aliceRecent).toHaveLength(2);
+    expect(aliceRecent[1]?.text).toBe("secret to bob");
+
+    // Bob (recipient by username) sees the whisper
+    const bobRecent = store.recent(10, { forUser: { userId: "bob-uid", username: "bob" } });
+    expect(bobRecent).toHaveLength(2);
+    expect(bobRecent[1]?.text).toBe("secret to bob");
+
+    // Carol (unrelated user) does NOT see the whisper
+    const carolRecent = store.recent(10, { forUser: { userId: "carol-uid", username: "carol" } });
+    expect(carolRecent).toHaveLength(1);
+    expect(carolRecent[0]?.text).toBe("public message");
+  });
 });

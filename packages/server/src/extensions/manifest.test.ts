@@ -97,4 +97,125 @@ describe("validateManifest", () => {
     expect(res.ok).toBe(false);
     expect(res.error).toContain("empty effective activationEvents");
   });
+
+  describe("contributes.documentTypes and contributes.sheets (Paso 13)", () => {
+    const withDocTypes = {
+      id: "sheets-ext",
+      name: "Sheets",
+      version: "1.0.0",
+      engines: { core: "^0.1.0" },
+      activationEvents: ["onReady"],
+      contributes: {
+        documentTypes: [
+          { id: "cpr-character", base: "Actor", schemaVersion: 1 },
+        ],
+        sheets: [
+          { documentType: "cpr-character", component: "CprSheet", default: true },
+        ],
+      },
+    };
+
+    it("accepts a valid manifest with documentTypes + sheets", () => {
+      const res = validateManifest(withDocTypes, CORE_VERSION);
+      expect(res.ok).toBe(true);
+    });
+
+    it("rejects non-kebab documentType id", () => {
+      const bad = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "BadId", base: "Actor", schemaVersion: 0 }],
+        },
+      };
+      const res = validateManifest(bad);
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain('Invalid documentType id "BadId"');
+    });
+
+    it("rejects documentType with invalid base", () => {
+      const bad = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "ok-id", base: "Whatever", schemaVersion: 0 }],
+        },
+      };
+      const res = validateManifest(bad);
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain("Actor/Item/Scene");
+    });
+
+    it("rejects non-integer or negative schemaVersion", () => {
+      const nonInt = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "ok-id", base: "Actor", schemaVersion: 1.5 }],
+        },
+      };
+      expect(validateManifest(nonInt).ok).toBe(false);
+
+      const negative = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "ok-id", base: "Actor", schemaVersion: -1 }],
+        },
+      };
+      expect(validateManifest(negative).ok).toBe(false);
+    });
+
+    it("rejects duplicate documentType id within the manifest", () => {
+      const dup = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [
+            { id: "dup", base: "Actor", schemaVersion: 0 },
+            { id: "dup", base: "Item", schemaVersion: 0 },
+          ],
+        },
+      };
+      const res = validateManifest(dup);
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain('documentType id "dup" appears more than once');
+    });
+
+    it("rejects sheet that references a non-contributed, non-base documentType", () => {
+      const orphanSheet = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "real", base: "Actor", schemaVersion: 0 }],
+          sheets: [{ documentType: "ghost", component: "X", default: true }],
+        },
+      };
+      const res = validateManifest(orphanSheet);
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain("must reference either a contributed id");
+    });
+
+    it("accepts sheet referencing a base type (Actor/Item/Scene)", () => {
+      const baseSheet = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "cpr-character", base: "Actor", schemaVersion: 0 }],
+          sheets: [{ documentType: "Actor", component: "ActorSheetX", default: true }],
+        },
+      };
+      const res = validateManifest(baseSheet, CORE_VERSION);
+      expect(res.ok).toBe(true);
+    });
+
+    it("rejects multiple default:true sheets for the same documentType within one manifest", () => {
+      const twoDefaults = {
+        ...withDocTypes,
+        contributes: {
+          documentTypes: [{ id: "cpr-character", base: "Actor", schemaVersion: 0 }],
+          sheets: [
+            { documentType: "cpr-character", component: "A", default: true },
+            { documentType: "cpr-character", component: "B", default: true },
+          ],
+        },
+      };
+      const res = validateManifest(twoDefaults);
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain('Multiple sheets in manifest marked default: true');
+    });
+  });
 });

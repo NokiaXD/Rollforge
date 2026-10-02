@@ -103,7 +103,9 @@ export function attachSync(io: SocketIOServer, deps: SyncDeps): void {
     socket.join(`user:${username}`);
 
     if (chatStore) {
-      const messages = chatStore.recent(HISTORY_PAGE);
+      const messages = chatStore.recent(HISTORY_PAGE, {
+        forUser: { userId, username },
+      });
       const history: ChatHistoryEvent = { type: "ChatHistory", messages };
       socket.emit("chatHistory", history);
     }
@@ -441,6 +443,7 @@ function handleIntent(
         socket.emit("intentRejected", { intent, reason: "invalid" });
         return;
       }
+      const wasActive = state.getActiveSceneId() === intent.sceneId;
       const deleted = state.deleteScene(intent.sceneId);
       if (!deleted) {
         socket.emit("intentRejected", { intent, reason: "not-found" });
@@ -448,7 +451,7 @@ function handleIntent(
       }
       const ev: SceneDeletedEvent = { type: "SceneDeleted", sceneId: intent.sceneId };
       io.emit("event", ev);
-      if (state.getActiveSceneId() === intent.sceneId) {
+      if (wasActive) {
         state.setActiveSceneId("default");
         const fallback: ActiveSceneChangedEvent = { type: "ActiveSceneChanged", sceneId: "default" };
         io.emit("event", fallback);
@@ -670,6 +673,8 @@ function tokenOwnershipDoc(token: TokenRecord): Document<unknown> {
     system: { sceneId: token.sceneId, x: token.x, y: token.y, w: token.w, h: token.h },
     flags: {},
     ownership: token.ownership,
+    schemaVersion: 0,
+    migrationStatus: "ok",
     _rev: token._rev,
   };
 }

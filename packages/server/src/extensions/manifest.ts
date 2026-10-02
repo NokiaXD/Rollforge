@@ -1,10 +1,16 @@
 import semver from "semver";
-import type { ExtensionManifest, ChatCommandContribution } from "@rollforge/protocol";
+import type {
+  ExtensionManifest,
+  ChatCommandContribution,
+  DocumentTypeContribution,
+  SheetContribution,
+} from "@rollforge/protocol";
 
 export const CORE_VERSION = "0.1.0";
 
 const KEBAB_CASE_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const COMMAND_NAME_RE = /^[a-z0-9_-]+$/;
+const DOC_TYPE_BASES = new Set(["Actor", "Item", "Scene"]);
 
 export interface ManifestValidationResult {
   ok: boolean;
@@ -76,6 +82,70 @@ export function validateManifest(
         };
       }
       contributedCommands.add(cmd.name.toLowerCase());
+    }
+  }
+
+  const contributedDocTypeIds = new Set<string>();
+  if (m.contributes?.documentTypes) {
+    if (!Array.isArray(m.contributes.documentTypes)) {
+      return { ok: false, error: `Manifest "contributes.documentTypes" must be an array` };
+    }
+    for (const dt of m.contributes.documentTypes as DocumentTypeContribution[]) {
+      if (!dt.id || typeof dt.id !== "string" || !KEBAB_CASE_RE.test(dt.id)) {
+        return {
+          ok: false,
+          error: `Invalid documentType id "${dt.id}". Must be kebab-case.`,
+        };
+      }
+      if (!DOC_TYPE_BASES.has(dt.base)) {
+        return {
+          ok: false,
+          error: `documentType "${dt.id}" has invalid base "${dt.base}". Must be one of Actor/Item/Scene.`,
+        };
+      }
+      if (!Number.isInteger(dt.schemaVersion) || dt.schemaVersion < 0) {
+        return {
+          ok: false,
+          error: `documentType "${dt.id}" schemaVersion must be a non-negative integer (received ${String(dt.schemaVersion)}).`,
+        };
+      }
+      if (contributedDocTypeIds.has(dt.id)) {
+        return {
+          ok: false,
+          error: `documentType id "${dt.id}" appears more than once in contributes.documentTypes.`,
+        };
+      }
+      contributedDocTypeIds.add(dt.id);
+    }
+  }
+
+  const defaultPerDocType = new Set<string>();
+  if (m.contributes?.sheets) {
+    if (!Array.isArray(m.contributes.sheets)) {
+      return { ok: false, error: `Manifest "contributes.sheets" must be an array` };
+    }
+    for (const sh of m.contributes.sheets as SheetContribution[]) {
+      if (!sh.documentType || typeof sh.documentType !== "string") {
+        return {
+          ok: false,
+          error: `Invalid sheet entry: documentType must be a non-empty string.`,
+        };
+      }
+      if (!contributedDocTypeIds.has(sh.documentType) && !DOC_TYPE_BASES.has(sh.documentType)) {
+        return {
+          ok: false,
+          error: `sheet for documentType "${sh.documentType}" must reference either a contributed id in contributes.documentTypes or a base type (Actor/Item/Scene).`,
+        };
+      }
+      if (sh.default === true) {
+        if (defaultPerDocType.has(sh.documentType)) {
+          return {
+            ok: false,
+            error: `Multiple sheets in manifest marked default: true for documentType "${sh.documentType}".`,
+          };
+        }
+        defaultPerDocType.add(sh.documentType);
+      }
     }
   }
 
