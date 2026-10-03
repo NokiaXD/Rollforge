@@ -1,6 +1,7 @@
 import { useEffect } from "preact/hooks";
-import { documents, fetchDocuments, listDocumentsByType } from "../../state/documents";
-import { openDocument } from "../../state/ui";
+import type { Document } from "@rollforge/protocol";
+import { deleteDocument, documents, fetchDocuments, listDocumentsByType, patchDocument } from "../../state/documents";
+import { openContextMenu, openDocument, type ContextMenuItem } from "../../state/ui";
 import { currentUser } from "../../state/auth";
 
 const DEFAULT_ACTOR_OWNERSHIP = {
@@ -37,8 +38,47 @@ export function DocumentsView() {
     }
   };
 
+  //  sin modal de rename todavía: prompt() + el PATCH que ya existe.
+  const actorContextItems = (a: Document): ContextMenuItem[] => [
+    { label: "Abrir ficha", onClick: () => (openDocument.value = a.id) },
+    ...(isGM
+      ? [
+          {
+            label: "Renombrar",
+            onClick: () => {
+              const name = window.prompt("Nombre del actor", a.name);
+              if (name && name !== a.name) void patchDocument(a.id, { patch: { name } });
+            },
+          },
+        ]
+      : []),
+    {
+      label: "Copiar ID",
+      hint: a.id,
+      onClick: () => void navigator.clipboard?.writeText(a.id),
+    },
+    ...(isGM
+      ? [
+          { divider: true },
+          {
+            label: "Eliminar actor",
+            danger: true,
+            onClick: () => {
+              if (window.confirm(`Eliminar actor "${a.name}"?`)) void deleteDocument(a.id);
+            },
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <div class="custom-scroll flex h-full flex-col overflow-y-auto bg-transparent p-3 text-xs">
+    <div
+      class="custom-scroll flex h-full flex-col overflow-y-auto bg-transparent p-3 text-xs"
+      onContextMenu={(e) => {
+        if (!isGM) return e.preventDefault();
+        openContextMenu(e, [{ label: "+ Crear Actor", onClick: handleCreate }]);
+      }}
+    >
       <div class="mb-3 flex items-center justify-between">
         <span class="font-semibold uppercase tracking-wider text-muted text-[11px]">
           Actores ({actors.length})
@@ -71,6 +111,7 @@ export function DocumentsView() {
               key={a.id}
               type="button"
               onClick={() => (openDocument.value = a.id)}
+              onContextMenu={(e) => openContextMenu(e, actorContextItems(a))}
               class="flex w-full items-center justify-between rounded-md border border-white/5 bg-black/20 p-2 text-xs hover:border-white/10 hover:bg-black/30 transition-colors text-left"
             >
               <div class="min-w-0">

@@ -2,13 +2,14 @@ import { useEffect } from "preact/hooks";
 import { effect } from "@preact/signals";
 import { Graphics } from "pixi.js";
 import { authStatus, currentUser } from "../state/auth";
-import { lastError, currentSceneId } from "../state/scene";
+import { lastError, currentSceneId, cellSize, tokenAt } from "../state/scene";
 import {
   activeSidebarTab,
   toggleSidebar,
   gmUsersModalOpen,
   settingsModalOpen,
   openContextMenu,
+  type ContextMenuItem,
 } from "../state/ui";
 import { LoginForm } from "./LoginForm";
 import { TopBar } from "./layout/TopBar";
@@ -32,6 +33,7 @@ import { SceneRenderer } from "../canvas/sceneRenderer";
 import {
   connectSocket,
   createTokenRequest,
+  deleteTokenRequest,
   disconnectSocket,
   sendIntent,
 } from "../net/socket";
@@ -117,21 +119,44 @@ export function App() {
       connectSocket();
 
       //  native contextmenu fires after a non-drag right-click; the browser
-      // suppresses it when the user actually panned with right-mouse. We open a tiny
-      // GM menu to spawn a token at the cursor world position.
+      //  suppresses it when the user actually panned with right-mouse. Token menu
+      //  when the cursor is over a token, "crear aquí" on empty canvas.
       const isGM = currentUser.value?.role === "GM";
       if (isGM) {
         const onContextMenu = (e: MouseEvent) => {
           const rect = ctx.app.canvas.getBoundingClientRect();
           if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
           const world = ctx.viewport.toWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-          openContextMenu(e, [
-            {
-              label: "Crear token aquí",
-              hint: `${Math.round(world.x)}, ${Math.round(world.y)}`,
-              onClick: () => createTokenRequest(currentSceneId.value, world.x, world.y),
-            },
-          ]);
+          const t = tokenAt(world.x, world.y);
+          const items: ContextMenuItem[] = t
+            ? [
+                { label: "Centrar cámara aquí", onClick: () => ctx.viewport.moveCenter(t.x, t.y) },
+                {
+                  label: "Copiar posición",
+                  hint: `${Math.round(t.x)}, ${Math.round(t.y)}`,
+                  onClick: () => void navigator.clipboard?.writeText(`${Math.round(t.x)}, ${Math.round(t.y)}`),
+                },
+                {
+                  label: "Duplicar",
+                  onClick: () => createTokenRequest(t.sceneId, t.x + cellSize.value, t.y),
+                },
+                { divider: true },
+                {
+                  label: "Eliminar token",
+                  danger: true,
+                  onClick: () => {
+                    if (window.confirm(`Eliminar token ${t.id}?`)) deleteTokenRequest(t.sceneId, t.id);
+                  },
+                },
+              ]
+            : [
+                {
+                  label: "Crear token aquí",
+                  hint: `${Math.round(world.x)}, ${Math.round(world.y)}`,
+                  onClick: () => createTokenRequest(currentSceneId.value, world.x, world.y),
+                },
+              ];
+          openContextMenu(e, items);
         };
         ctx.app.canvas.addEventListener("contextmenu", onContextMenu);
         disposers.push(() => ctx.app.canvas.removeEventListener("contextmenu", onContextMenu));
