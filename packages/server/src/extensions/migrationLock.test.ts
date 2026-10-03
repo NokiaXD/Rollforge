@@ -54,4 +54,35 @@ describe("MigrationLock", () => {
     });
     expect(ran).toBe(true);
   });
+
+  it("cleans up the internal Map entry after the last caller for a type finishes", async () => {
+    // Regression test for the comparison bug: `previous.then(() => next)` was
+    // evaluated twice, creating two distinct Promise objects, so `===` always
+    // returned false and the entry was never deleted.
+    const lock = new MigrationLock();
+
+    await lock.runExclusive("Actor", async () => {
+      // no-op
+    });
+
+    // Accessing the private field via cast to verify cleanup
+    const chains = (lock as unknown as { chains: Map<string, unknown> }).chains;
+    expect(chains.has("Actor")).toBe(false);
+  });
+
+  it("serializes three callers in order and leaves the Map clean", async () => {
+    const lock = new MigrationLock();
+    const order: number[] = [];
+
+    await Promise.all([
+      lock.runExclusive("Scene", async () => { order.push(1); }),
+      lock.runExclusive("Scene", async () => { order.push(2); }),
+      lock.runExclusive("Scene", async () => { order.push(3); }),
+    ]);
+
+    expect(order).toEqual([1, 2, 3]);
+
+    const chains = (lock as unknown as { chains: Map<string, unknown> }).chains;
+    expect(chains.has("Scene")).toBe(false);
+  });
 });

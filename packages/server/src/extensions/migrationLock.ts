@@ -12,7 +12,12 @@ export class MigrationLock {
     const next = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.chains.set(type, previous.then(() => next));
+    // Save the composed promise in a variable so the cleanup check below
+    // compares against the exact same object reference we stored. Calling
+    // `previous.then(() => next)` twice would create two distinct Promise
+    // instances, making the `===` check always false and leaking the entry.
+    const chain = previous.then(() => next);
+    this.chains.set(type, chain);
     await previous;
     try {
       await fn();
@@ -20,9 +25,9 @@ export class MigrationLock {
       release!();
       // Limpieza: si nadie más tomó la cadena después de este run, soltamos
       // el slot para no acumular closures. La comparación es contra la
-      // promesa más reciente que escribimos; si cambió, otro caller ya
-      // tomó el relevo y mantiene su propia entrada.
-      if (this.chains.get(type) === previous.then(() => next)) {
+      // promesa exacta que escribimos; si cambió, otro caller ya tomó el
+      // relevo y mantiene su propia entrada.
+      if (this.chains.get(type) === chain) {
         this.chains.delete(type);
       }
     }
