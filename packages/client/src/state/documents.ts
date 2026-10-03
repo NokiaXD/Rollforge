@@ -75,6 +75,16 @@ export async function fetchDocument(id: string): Promise<Document | null> {
   return doc;
 }
 
+export async function deleteDocument(id: string): Promise<boolean> {
+  const res = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) return false;
+  removeDocument(id);
+  return true;
+}
+
 export interface PatchDocumentOptions {
   //  patch is a record of dot-path → new leaf value.
   patch: Record<string, unknown>;

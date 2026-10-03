@@ -20,7 +20,8 @@ import {
   type Token,
 } from "../state/scene";
 import { appendMessage, replaceMessages } from "../state/chat";
-import { upsertDocument } from "../state/documents";
+import { upsertDocument, removeDocument } from "../state/documents";
+import { openDocument } from "../state/ui";
 
 let socket: Socket | null = null;
 let lastJoinedScene: string | null = null;
@@ -102,6 +103,11 @@ export function connectSocket(): Socket {
 
   socket.on("documentUpdated", (ev: { type: "DocumentUpdated"; document: import("@rollforge/protocol").Document }) => {
     upsertDocument(ev.document);
+  });
+
+  socket.on("documentDeleted", (ev: { type: "DocumentDeleted"; id: string }) => {
+    removeDocument(ev.id);
+    if (openDocument.value === ev.id) openDocument.value = null;
   });
 
   // Sync joinScene/leaveScene with currentSceneId (derived from role).

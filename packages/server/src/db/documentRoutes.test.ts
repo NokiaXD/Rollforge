@@ -190,6 +190,27 @@ describe("documents HTTP integration", () => {
     sub.disconnect();
   });
 
+  it("DELETE by GM removes the document; Player gets 403; missing id 404s", async () => {
+    await request({ port, method: "POST", path: "/api/documents", cookie: gmCookie, body: makeActor("a1", gmName) });
+
+    const byPlayer = await request({ port, method: "DELETE", path: "/api/documents/a1", cookie: playerCookie });
+    expect(byPlayer.status).toBe(403);
+
+    const missing = await request({ port, method: "DELETE", path: "/api/documents/nope", cookie: gmCookie });
+    expect(missing.status).toBe(404);
+
+    const byGm = await request({ port, method: "DELETE", path: "/api/documents/a1", cookie: gmCookie });
+    expect(byGm.status).toBe(204);
+
+    const after = await request({ port, method: "GET", path: "/api/documents/a1", cookie: gmCookie });
+    expect(after.status).toBe(404);
+  });
+
+  it("DELETE requires auth", async () => {
+    const r = await request({ port, method: "DELETE", path: "/api/documents/a1" });
+    expect(r.status).toBe(401);
+  });
+
   it("POST rejects id with invalid characters (400)", async () => {
     const r = await request({
       port, method: "POST", path: "/api/documents", cookie: gmCookie,

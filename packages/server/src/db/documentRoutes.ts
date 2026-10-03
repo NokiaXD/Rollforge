@@ -121,5 +121,15 @@ export function createDocumentRouter(opts: DocumentRoutesOpts): Router {
     }
   });
 
+  //  GM-only and deliberately un-ownership-aware: deleting a document is a GM
+  //  operation, an OWNER player edits but never destroys.
+  router.delete("/:id", requireAuth, requireGm, (req: Request, res: Response) => {
+    if (!opts.store) return res.status(503).json({ error: "store-unavailable" });
+    const id = req.params.id ?? "";
+    if (!opts.store.delete(id)) return res.status(404).json({ error: "not-found" });
+    opts.io.to("world").emit("documentDeleted", { type: "DocumentDeleted", id });
+    res.status(204).end();
+  });
+
   return router;
 }
