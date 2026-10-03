@@ -1,0 +1,43 @@
+{
+  "id": "example-rpg",
+  "name": "Example RPG",
+  "version": "0.1.0",
+  "engines": {
+    "core": ">=0.1.0"
+  },
+  "activationEvents": [
+    "onReady"
+  ],
+  "contributes": {
+    "documentTypes": [
+      {
+        "id": "example-character",
+        "base": "Actor",
+        "schemaVersion": 2
+      }
+    ],
+    "sheets": [
+      {
+        "documentType": "example-character",
+        "component": "ExampleCharacterSheet",
+        "default": true
+      }
+    ],
+    "chatCommands": [
+      {
+        "name": "ex-roll",
+        "description": "Lanza dados del sistema Example RPG",
+        "requiredPermission": "Player"
+      },
+      {
+        "name": "ex-init",
+        "description": "Tira iniciativa para el grupo",
+        "requiredPermission": "Player"
+      }
+    ]
+  },
+  "main": {
+    "server": "src/main.server.js",
+    "client": "src/main.client.js"
+  }
+}
