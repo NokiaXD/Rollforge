@@ -20,6 +20,8 @@ export interface TokenRecord {
   h: number;
   ownership: TokenOwnership;
   _rev: number;
+  /** userId of the player who owns this token; undefined = GM-only */
+  ownerId?: string;
 }
 
 export interface DragLock {
@@ -274,6 +276,15 @@ export class SceneState {
 
   getSceneTokens(sceneId: string): TokenRecord[] {
     return [...this.tokens.values()].filter((t) => t.sceneId === sceneId);
+  }
+
+  //  drops the token and any lock on it. Persistence follows the scene/folder pattern:
+  //  SceneState owns token rows, the store is just the durable mirror.
+  deleteToken(tokenId: string): boolean {
+    if (!this.tokens.delete(tokenId)) return false;
+    this.locks.delete(tokenId);
+    this.store?.delete(tokenId);
+    return true;
   }
 
   acquireLock(tokenId: string, ownerId: string, ttlMs = DEFAULT_LOCK_TTL_MS): DragLock | null {

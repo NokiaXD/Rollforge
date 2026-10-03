@@ -15,6 +15,7 @@ import type {
   SceneDeletedEvent,
   SceneUpdatedEvent,
   TokenPositionDiff,
+  TokenDeletedEvent,
   RollActorRef,
   PreChatMessagePayload,
 } from "@rollforge/protocol";
@@ -644,6 +645,35 @@ function handleIntent(
         _rev: updated._rev,
       };
       io.to(`scene:${intent.sceneId}`).emit("event", diff);
+      return;
+    }
+    case "DeleteToken": {
+      //  GM-only: deletion is destructive, players never remove scene objects.
+      if (!isGM) {
+        socket.emit("intentRejected", { intent, reason: "forbidden" });
+        return;
+      }
+      if (typeof intent.tokenId !== "string" || !intent.tokenId) {
+        socket.emit("intentRejected", { intent, reason: "invalid" });
+        return;
+      }
+      const token = state.getToken(intent.tokenId);
+      if (!token) {
+        socket.emit("intentRejected", { intent, reason: "not-found" });
+        return;
+      }
+      //  broadcast to the token's own scene, not intent.sceneId — a stale
+      //  sceneId from the client would delete in state but notify the wrong room.
+      if (!state.deleteToken(intent.tokenId)) {
+        socket.emit("intentRejected", { intent, reason: "not-found" });
+        return;
+      }
+      const ev: TokenDeletedEvent = {
+        type: "TokenDeleted",
+        sceneId: token.sceneId,
+        tokenId: intent.tokenId,
+      };
+      io.to(`scene:${token.sceneId}`).emit("event", ev);
       return;
     }
     case "SendChatMessage": {

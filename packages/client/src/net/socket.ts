@@ -176,6 +176,10 @@ export function createTokenRequest(sceneId: string, x: number, y: number): void 
   connectSocket().emit("createToken", { sceneId, x, y });
 }
 
+export function deleteTokenRequest(sceneId: string, tokenId: string): void {
+  sendIntent({ type: "DeleteToken", sceneId, tokenId });
+}
+
 export function sendChatMessage(text: string, actor?: RollActorRef): void {
   connectSocket().emit("chatMessage", { text, actor });
 }

@@ -55,6 +55,12 @@ export interface ReleaseDragLockIntent {
   tokenId: string;
 }
 
+export interface DeleteTokenIntent {
+  type: "DeleteToken";
+  sceneId: string;
+  tokenId: string;
+}
+
 export interface SetActiveSceneIntent {
   type: "SetActiveScene";
   sceneId: string;
@@ -118,6 +124,7 @@ export type Intent =
   | MoveTokenIntent
   | AcquireDragLockIntent
   | ReleaseDragLockIntent
+  | DeleteTokenIntent
   | SetActiveSceneIntent
   | CreateSceneIntent
   | UpdateSceneIntent
@@ -146,6 +153,12 @@ export interface DragLockAcquiredEvent {
 
 export interface DragLockReleasedEvent {
   type: "DragLockReleased";
+  sceneId: string;
+  tokenId: string;
+}
+
+export interface TokenDeletedEvent {
+  type: "TokenDeleted";
   sceneId: string;
   tokenId: string;
 }
@@ -222,6 +235,7 @@ export interface ChatHistoryEvent {
 
 export type SceneEvent =
   | TokenPositionDiff
+  | TokenDeletedEvent
   | DragLockAcquiredEvent
   | DragLockReleasedEvent
   | ActiveSceneChangedEvent

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent, tokens, upsertToken, type Token } from "./scene";
+import { applyEvent, cellSize, focusedTokenId, locks, tokenAt, tokens, upsertToken, type Token } from "./scene";
 
 const baseToken = (overrides: Partial<Token> = {}): Token => ({
   id: "t1",
@@ -34,5 +34,27 @@ describe("applyEvent", () => {
     expect([...tokens.value]).toHaveLength(1);
     applyEvent({ type: "DragLockReleased", tokenId: "t1" });
     expect([...tokens.value]).toHaveLength(1);
+  });
+  it("TokenDeleted drops the token, its lock and its focus", () => {
+    tokens.value = new Map([["t1", baseToken()]]);
+    locks.value = new Map([["t1", "u1"]]);
+    focusedTokenId.value = "t1";
+    applyEvent({ type: "TokenDeleted", sceneId: "default", tokenId: "t1" });
+    expect(tokens.value.has("t1")).toBe(false);
+    expect(locks.value.has("t1")).toBe(false);
+    expect(focusedTokenId.value).toBeNull();
+  });
+});
+
+describe("tokenAt", () => {
+  it("hits inside the cell rect, misses outside, last match wins", () => {
+    cellSize.value = 50;
+    tokens.value = new Map([
+      ["t1", baseToken({ id: "t1", x: 0, y: 0 })],
+      ["t2", baseToken({ id: "t2", x: 0, y: 0 })],
+    ]);
+    expect(tokenAt(24, 24)?.id).toBe("t2");
+    expect(tokenAt(0, 0)?.id).toBe("t2");
+    expect(tokenAt(26, 0)).toBeNull();
   });
 });

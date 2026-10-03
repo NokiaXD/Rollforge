@@ -12,6 +12,8 @@ export interface Token {
   w: number;
   h: number;
   _rev: number;
+  /** userId of the player who owns this token; undefined = GM-only */
+  ownerId?: string;
 }
 
 // activeSceneId: server-controlled. What players see.
@@ -50,6 +52,27 @@ export function upsertToken(token: Token): void {
   tokens.value = next;
 }
 
+export function removeToken(id: string): void {
+  if (!tokens.value.has(id)) return;
+  const next = new Map(tokens.value);
+  next.delete(id);
+  tokens.value = next;
+}
+
+//  topmost token whose cell rect contains the world point. Uses state coords (not
+//  Pixi hit testing) so it's one pass over the map we already have — good enough for
+//  a right-click menu, off by <1 cell while a token is mid-drag.
+export function tokenAt(x: number, y: number): Token | null {
+  const cell = cellSize.value;
+  let hit: Token | null = null;
+  for (const t of tokens.value.values()) {
+    const hw = (t.w * cell) / 2;
+    const hh = (t.h * cell) / 2;
+    if (x >= t.x - hw && x <= t.x + hw && y >= t.y - hh && y <= t.y + hh) hit = t;
+  }
+  return hit;
+}
+
 export function applyEvent(ev: SceneEvent): void {
   switch (ev.type) {
     case "TokenPositionDiff": {
@@ -72,6 +95,14 @@ export function applyEvent(ev: SceneEvent): void {
       locks.value = next;
       return;
     }
+    case "TokenDeleted": {
+      removeToken(ev.tokenId);
+      const nextLocks = new Map(locks.value);
+      nextLocks.delete(ev.tokenId);
+      locks.value = nextLocks;
+      if (focusedTokenId.value === ev.tokenId) focusedTokenId.value = null;
+      return;
+    }
     case "SceneCreated":
     case "SceneUpdated": {
       const systemWithFolder: SceneSystem = { ...ev.system, folder: ev.folder ?? ev.system.folder ?? null };
@@ -82,6 +113,11 @@ export function applyEvent(ev: SceneEvent): void {
         system: systemWithFolder,
         flags: {},
         ownership: {},
+        // schemaVersion/migrationStatus are server-owned; the client receives
+        // them via the full document fetch, not from socket events. Default to
+        // safe values so the Document shape is satisfied.
+        schemaVersion: 0,
+        migrationStatus: "ok",
         _rev: ev._rev,
       };
       if (ev.img !== undefined) doc.img = ev.img;
@@ -101,6 +137,8 @@ export function applyEvent(ev: SceneEvent): void {
         system: {},
         flags: {},
         ownership: {},
+        schemaVersion: 0,
+        migrationStatus: "ok",
         _rev: ev._rev,
       });
       return;

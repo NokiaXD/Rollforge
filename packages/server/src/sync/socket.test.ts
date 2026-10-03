@@ -7,6 +7,7 @@ import type {
   DragLockReleasedEvent,
   Intent,
   TokenPositionDiff,
+  TokenDeletedEvent,
 } from "@rollforge/protocol";
 import type { TokenRecord } from "../sync/sceneState";
 
@@ -448,5 +449,34 @@ describe("Paso 10 — camera of the GM", () => {
     );
     expect(server.state.getActiveSceneId()).toBe("default");
     expect(fallback.sceneId).toBe("default");
+  });
+
+  it("rejects DeleteToken from a non-GM (forbidden)", async () => {
+    server.state.createToken("t1", "default", 0, 0);
+    player.socket.emit("intent", { type: "DeleteToken", sceneId: "default", tokenId: "t1" } satisfies Intent);
+    const rej = await waitForRejection(player);
+    expect(rej.reason).toBe("forbidden");
+    expect(server.state.getToken("t1")).toBeDefined();
+  });
+
+  it("GM DeleteToken removes it and broadcasts to the token's scene room", async () => {
+    server.state.createToken("t1", "default", 0, 0);
+    server.state.acquireLock("t1", "someone-else");
+    await joinScene(player, "default");
+
+    //  stale sceneId on purpose: the broadcast must follow the token, not the payload.
+    gm.socket.emit("intent", { type: "DeleteToken", sceneId: "bogus-scene", tokenId: "t1" } satisfies Intent);
+
+    const seen = await waitFor<TokenDeletedEvent>(player, (e) => e.type === "TokenDeleted");
+    expect(seen.sceneId).toBe("default");
+    expect(seen.tokenId).toBe("t1");
+    expect(server.state.getToken("t1")).toBeUndefined();
+    expect(server.state.getLock("t1")).toBeUndefined();
+  });
+
+  it("rejects DeleteToken for an unknown token (not-found)", async () => {
+    gm.socket.emit("intent", { type: "DeleteToken", sceneId: "default", tokenId: "ghost" } satisfies Intent);
+    const rej = await waitForRejection(gm);
+    expect(rej.reason).toBe("not-found");
   });
 });
