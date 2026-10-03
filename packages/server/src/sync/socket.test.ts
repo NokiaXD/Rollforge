@@ -52,6 +52,25 @@ function waitFor<T = any>(handle: ClientHandle, predicate: (e: any) => boolean, 
   });
 }
 
+function waitForRejection(handle: ClientHandle, predicate: (e: any) => boolean = () => true, timeoutMs = 1500): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const existing = handle.rejections.find(predicate);
+    if (existing) return resolve(existing);
+    const timer = setTimeout(() => {
+      handle.socket.off("intentRejected", onRejection);
+      reject(new Error(`waitForRejection timeout; saw ${handle.rejections.length} rejections`));
+    }, timeoutMs);
+    const onRejection = (e: any) => {
+      if (predicate(e)) {
+        clearTimeout(timer);
+        handle.socket.off("intentRejected", onRejection);
+        resolve(e);
+      }
+    };
+    handle.socket.on("intentRejected", onRejection);
+  });
+}
+
 async function joinScene(handle: ClientHandle, sceneId: string): Promise<TokenRecord[]> {
   return new Promise((resolve) => {
     handle.socket.emit("joinScene", sceneId, (payload: { tokens: TokenRecord[] }) => {
@@ -276,9 +295,8 @@ describe("Paso 10 — camera of the GM", () => {
 
   it("rejects SetActiveScene from a non-GM (forbidden)", async () => {
     player.socket.emit("intent", { type: "SetActiveScene", sceneId: "tavern" } satisfies Intent);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(player.rejections.length).toBe(1);
-    expect(player.rejections[0].reason).toBe("forbidden");
+    const rej = await waitForRejection(player);
+    expect(rej.reason).toBe("forbidden");
     expect(server.state.getActiveSceneId()).toBe("default");
   });
 
@@ -301,9 +319,8 @@ describe("Paso 10 — camera of the GM", () => {
 
   it("rejects SetActiveScene targeting a non-existent scene", async () => {
     gm.socket.emit("intent", { type: "SetActiveScene", sceneId: "ghost" } satisfies Intent);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(gm.rejections.length).toBe(1);
-    expect(gm.rejections[0].reason).toBe("not-found");
+    const rej = await waitForRejection(gm);
+    expect(rej.reason).toBe("not-found");
   });
 
   it("rejects MoveToken from a Player in a non-active scene (not-in-active-scene)", async () => {
@@ -319,9 +336,8 @@ describe("Paso 10 — camera of the GM", () => {
       _rev: 0,
     } satisfies Intent);
 
-    await new Promise((r) => setTimeout(r, 50));
-    expect(player.rejections.length).toBe(1);
-    expect(player.rejections[0].reason).toBe("not-in-active-scene");
+    const rej = await waitForRejection(player);
+    expect(rej.reason).toBe("not-in-active-scene");
     expect(server.state.getToken("t1")?.x).toBe(0);
   });
 
@@ -358,10 +374,11 @@ describe("Paso 10 — camera of the GM", () => {
       name: "x",
       system: { width: 1, height: 1, background: null, grid: { size: 50, color: 0, type: "square" } },
     } satisfies Intent);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(player.rejections[0].reason).toBe("forbidden");
+    const rej = await waitForRejection(player);
+    expect(rej.reason).toBe("forbidden");
     expect(server.state.getScene("x")).toBeUndefined();
   });
+
 
   it("allows CreateScene from a GM and broadcasts SceneCreated", async () => {
     gm.socket.emit("intent", {
