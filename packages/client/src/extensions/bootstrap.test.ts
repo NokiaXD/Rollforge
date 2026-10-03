@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { DocumentUpdateRejection } from "@rollforge/extension-api";
 import { httpPatchDocument } from "./documentTransport";
+import { waitForApi } from "./bootstrap";
 
 interface FakeResponseInit {
   status: number;
@@ -23,6 +24,30 @@ function fakeFetch(init: FakeResponseInit): typeof fetch {
     return res as unknown as Response;
   }) as unknown as typeof fetch;
 }
+
+describe("waitForApi", () => {
+  it("retries while the connection is refused and resolves once it answers", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      if (calls < 3) throw new TypeError("fetch failed");
+      return { status: 401, ok: false } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const sleep = vi.fn(async () => {});
+    await expect(waitForApi(fetchImpl, sleep)).resolves.toBe(true);
+    expect(calls).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the budget and reports the API as never up", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    const sleep = vi.fn(async () => {});
+    await expect(waitForApi(fetchImpl, sleep)).resolves.toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(60);
+  });
+});
 
 describe("httpPatchDocument translation table", () => {
   it("returns the parsed body on 200", async () => {

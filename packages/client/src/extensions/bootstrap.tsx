@@ -94,7 +94,31 @@ const api = buildClientAPI();
 // server's declarative registries into the client. Failure is non-fatal: an
 // anon / network blip leaves BASE_TYPE_OWNERS intact and lets the core Actor
 // sheet still mount.
+
+// Every fetch in the bootstrap swallows network errors and degrades to "empty",
+// so a client that boots before the API is listening stays permanently
+// degraded: no owner map and no client extension sheets. Probe /api/auth/me
+// until the API answers (any HTTP status, including 401 — a throw means the
+// connection is still refused) and only then run the sequence.
+// ponytail: fixed 250ms x 60 budget instead of a health endpoint or an
+// event-driven signal; a long-lived client needs no retry at all.
+export async function waitForApi(
+  fetchImpl: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      await fetchImpl("/api/auth/me", { credentials: "include" });
+      return true;
+    } catch {
+      await sleep(250);
+    }
+  }
+  return false;
+}
+
 export async function bootstrapClient(): Promise<void> {
+  await waitForApi();
   await fetchMe();
   const types = await fetchDocumentTypes();
   const map: Record<string, string | undefined> = {};
