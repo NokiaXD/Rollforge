@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
+    "dev": "node scripts/dev.mjs",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/src/**/*.tsx\""
