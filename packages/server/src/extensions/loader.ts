@@ -45,7 +45,19 @@ export function discoverExtensions(dir: string): DiscoveredExtension[] {
 export async function loadExtensionEntry(disc: DiscoveredExtension): Promise<ExtensionEntry> {
   const manifest = disc.manifest;
   if (!manifest) throw new Error(disc.error ?? `extension "${disc.dir}" has no manifest`);
-  if (!manifest.main?.server) return { manifest };
+
+  if (manifest.main?.client) {
+    const rel = manifest.main.client;
+    if (rel.startsWith("/") || rel.includes("..")) {
+      throw new Error(`main.client "${rel}" must be a relative path inside the extension folder`);
+    }
+    const clientPath = resolve(disc.root, rel);
+    if (!clientPath.startsWith(resolve(disc.root))) {
+      throw new Error(`main.client "${rel}" escapes the extension folder`);
+    }
+  }
+
+  if (!manifest.main?.server) return { manifest, root: disc.root };
 
   const rel = manifest.main.server;
   if (rel.startsWith("/") || rel.includes("..")) {
@@ -57,7 +69,7 @@ export async function loadExtensionEntry(disc: DiscoveredExtension): Promise<Ext
     throw new Error(`main.server "${rel}" escapes the extension folder`);
   }
   const mod = (await import(pathToFileURL(entryPath).href)) as LoadedModule;
-  return { manifest, activate: mod.activate, deactivate: mod.deactivate };
+  return { manifest, activate: mod.activate, deactivate: mod.deactivate, root: disc.root };
 }
 
 export interface LoadExtensionsResult {

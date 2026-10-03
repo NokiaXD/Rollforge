@@ -31,6 +31,7 @@ export interface ExtensionEntry {
   manifest: ExtensionManifest;
   activate?: (api: ServerExtensionAPI) => void | Promise<void>;
   deactivate?: () => void | Promise<void>;
+  root?: string | undefined;
 }
 
 export interface ContributedCommandMeta {
@@ -293,6 +294,10 @@ export class ExtensionManager {
 
   getExtension(id: string): ExtensionRecord | undefined {
     return this.extensions.get(id);
+  }
+
+  list(): ExtensionRecord[] {
+    return Array.from(this.extensions.values());
   }
 
   getContributedCommand(name: string): ContributedCommandMeta | undefined {
@@ -574,7 +579,10 @@ export class ExtensionManager {
     return freezeServerAPI(api);
   }
 
-  private isTypeReady(type: string): boolean {
+  // Exposed publicly so documentsGate.ts can delegate to this single source
+  // of truth. Both the extension API path (createScopedAPI) and the HTTP
+  // route path (documentRoutes via documentsGate) use the same check.
+  isTypeReady(type: string): boolean {
     const ownerId = this.documentTypeRegistry.get(type)?.extensionId;
     if (!ownerId) return true;
     return this.extensions.get(ownerId)?.state === "Active";

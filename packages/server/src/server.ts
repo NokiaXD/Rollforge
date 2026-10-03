@@ -14,6 +14,8 @@ import { authMiddleware, parseCookies } from "./auth/middleware";
 import { createAuthRouter } from "./auth/routes";
 import { createUploadsRouter } from "./uploads";
 import { createDocumentRouter } from "./db/documentRoutes";
+import { createDocumentTypesRouter } from "./db/documentTypesRoute";
+import { createExtensionSourcesRouter } from "./db/extensionSourcesRouter";
 import type { Database as DB } from "better-sqlite3";
 import { ExtensionManager, type ExtensionEntry } from "./extensions/manager";
 import { loadExtensions } from "./extensions/loader";
@@ -296,6 +298,8 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
     app.use("/api/documents", createDocumentRouter({ store, io, extensionManager: extensions }));
+    app.use("/api/document-types", createDocumentTypesRouter({ extensionManager: extensions }));
+    app.use("/api/extension-sources", createExtensionSourcesRouter({ extensionManager: extensions }));
 
     io.use((socket, next) => {
       const cookies = parseCookies(socket.handshake.headers.cookie);
@@ -324,6 +328,8 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
     app.use("/api/documents", createDocumentRouter({ store, io, extensionManager: extensions }));
+    app.use("/api/document-types", createDocumentTypesRouter({ extensionManager: extensions }));
+    app.use("/api/extension-sources", createExtensionSourcesRouter({ extensionManager: extensions }));
     attachSync(io, {
       state,
       users,

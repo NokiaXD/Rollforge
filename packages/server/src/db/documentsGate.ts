@@ -17,14 +17,14 @@ export function ownerOfType(
 
 // Returns true when either no extension owns this type (base types like
 // Actor/Item/Scene never gate) or the owning extension is in Active state.
-// Caller should reject writes with extension-not-ready when this is false.
+// Delegates to manager.isTypeReady() as the single source of truth — both
+// this HTTP-route path and the extension API path (createScopedAPI) use
+// the same check, so changing the set of "ready" states only needs one edit.
 export function isExtensionReady(
   manager: ExtensionManager,
   type: string,
 ): boolean {
-  const ownerId = ownerOfType(manager, type);
-  if (!ownerId) return true;
-  return manager.getExtension(ownerId)?.state === "Active";
+  return manager.isTypeReady(type);
 }
 
 // Returns true when the doc does not exist (no gate needed for a fresh
