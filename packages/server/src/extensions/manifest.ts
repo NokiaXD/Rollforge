@@ -109,6 +109,12 @@ export function validateManifest(
           error: `documentType "${dt.id}" schemaVersion must be a non-negative integer (received ${String(dt.schemaVersion)}).`,
         };
       }
+      if (dt.scope !== undefined && dt.scope !== "campaign" && dt.scope !== "compendium") {
+        return {
+          ok: false,
+          error: `documentType "${dt.id}" has invalid scope "${String(dt.scope)}". Must be "campaign" or "compendium".`,
+        };
+      }
       if (contributedDocTypeIds.has(dt.id)) {
         return {
           ok: false,

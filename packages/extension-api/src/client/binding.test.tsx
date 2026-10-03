@@ -87,6 +87,7 @@ describe("createBoundInput", () => {
       documents: {
         get: () => sampleDoc,
         subscribe: () => () => {},
+        list: () => [],
         update: vi.fn(async () => {
           throw new DocumentUpdateRejection("stale-rev");
         }),
@@ -112,6 +113,7 @@ describe("createBoundInput", () => {
       documents: {
         get: () => sampleDoc,
         subscribe: () => () => {},
+        list: () => [],
         update: vi.fn(async () => {
           throw new Error("boom");
         }),
@@ -140,6 +142,7 @@ describe("createBoundInput", () => {
       documents: {
         get: () => sampleDoc,
         subscribe: subscribeSpy,
+        list: () => [],
         update: async () => sampleDoc,
       },
     } as Partial<ClientExtensionAPI>);
@@ -198,3 +201,4 @@ describe("createBoundInput", () => {
     expect(input.value).toBe("Renamed");
   });
 });
+

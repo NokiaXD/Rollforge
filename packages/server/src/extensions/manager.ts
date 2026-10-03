@@ -1,5 +1,5 @@
 import type { Database as DB } from "better-sqlite3";
-import { type ExtensionManifest, SheetOwnerConflict } from "@rollforge/protocol";
+import { type ExtensionManifest, type Document, SheetOwnerConflict } from "@rollforge/protocol";
 import {
   type ServerExtensionAPI,
   type HooksEngine,
@@ -16,6 +16,7 @@ import {
 } from "./registry";
 import { MigrationLock } from "./migrationLock";
 import { runDocumentMigrations, type RunMigrationsResult } from "../db/migrations-doc";
+import type { DocumentStore } from "../db/documentStore";
 import { createDiceAPI } from "./api/dice";
 
 export type ExtensionState =
@@ -268,26 +269,30 @@ export class ExtensionManager {
       (c) => c.extensionId === ext.id,
     );
     for (const reg of chains) {
+      // Paso 18: un documentType con scope "compendium" NO se migra al
+      // activar. Un pack son miles de entradas y §12 las quiere lazy (al
+      // abrir cada una). Sus documentos migran vía migrateIfStale, que es
+      // idempotente: el eager no aportaría nada, sólo movería el coste al
+      // arranque, que es justo lo que §12 quiere evitar.
+      if (this.documentTypeRegistry.get(reg.type)?.type.scope === "compendium") {
+        continue;
+      }
       const docs = (store.getByType as (t: string) => Array<any>)(reg.type);
       for (const doc of docs) {
+        //  Fast path ONLY — an optimization, not a correctness gate. The
+        //  authoritative staleness check happens inside migrateDocument,
+        //  under the lock. This check reads a snapshot taken outside the
+        //  lock, so a concurrent lazy read (migrateIfStale) could migrate
+        //  this document after we read it; deciding from this stale
+        //  snapshot and then running the chain on a stale document is the
+        //  double-migration bug that lazy migration made reachable.
         if (doc.schemaVersion >= reg.targetVersion) continue;
-        await this.migrationLock.runExclusive(reg.type, async () => {
-          // The chain came from a registerMigrations call where the
-          // extension typed it against its own TSystem. The runner is
-          // generic on Record<string, unknown> internally — the chain is
-          // sound at runtime because the extension owns the documentType.
-          const result = await runDocumentMigrations(
-            db,
-            doc as any,
-            reg.chain as any,
-            reg.targetVersion,
+        const result = await this.migrateDocument(doc.id);
+        if (!result.ok) {
+          console.warn(
+            `[migrations] ext=${ext.id} doc=${doc.id} type=${reg.type} v${result.atFrom}->v${result.atTo} blocked: ${result.error}`,
           );
-          if (!result.ok) {
-            console.warn(
-              `[migrations] ext=${ext.id} doc=${doc.id} type=${reg.type} v${result.atFrom}->v${result.atTo} blocked: ${result.error.message}`,
-            );
-          }
-        });
+        }
       }
     }
   }
@@ -484,7 +489,14 @@ export class ExtensionManager {
     };
 
     const documents: ServerExtensionAPI["documents"] = {
-      get: async (id) => (this.getDocumentsAPI ? this.getDocumentsAPI().get(id) : null),
+      // Lazy migration on read (§12): a compendium entry is migrated when
+      // it is first inspected/imported, not when the extension activates.
+      get: async <T extends Document = Document>(id: string): Promise<T | null> => {
+        if (this.getDocumentStore) {
+          return (await this.migrateIfStale<T>(id)) ?? null;
+        }
+        return this.getDocumentsAPI ? this.getDocumentsAPI().get<T>(id) : null;
+      },
       create: async (input) => {
         if (!this.getDocumentsAPI) throw new Error("Document API not available");
         // Paso 15 gate: writes for a contributed type are blocked while the
@@ -555,9 +567,9 @@ export class ExtensionManager {
             createdAt: number;
           }>;
       },
-      retry: async (docId) => this.runDocMigration(docId, {}),
+      retry: async (docId) => this.migrateDocument(docId, {}),
       review: async (docId, patch) =>
-        this.runDocMigration(docId, {
+        this.migrateDocument(docId, {
           skipSteps: new Set(patch.skipSteps),
           ...(patch.systemOverride !== undefined
             ? { systemOverride: patch.systemOverride }
@@ -588,43 +600,75 @@ export class ExtensionManager {
     return this.extensions.get(ownerId)?.state === "Active";
   }
 
-  //  Shared body of retry/review. Serialized per-type via MigrationLock so
-  // a manual retry from /migrations and the eager loop (or two GMs racing)
-  // can't interleave on the same doc.
-  private async runDocMigration(
+  //  Shared body of retry/review/inspect. Serialized per-DOCUMENT via
+  //  MigrationLock (§12) so a manual retry from /migrations, the eager loop
+  //  and a lazy read can't interleave on the same doc — and so two users
+  //  opening the same compendium entry share one migration instead of
+  //  duplicating the work. Different documents run in parallel.
+  //
+  //  The read happens INSIDE the lock, and that is load-bearing: a caller
+  //  that read the document before queueing is holding a snapshot that
+  //  another caller may have just migrated. Passing that stale snapshot to
+  //  runDocumentMigrations makes its "already at target?" check see the old
+  //  version and re-run the whole chain over the fresh data — which is
+  //  exactly the double migration the lock exists to prevent. The Paso 15
+  //  code had this read outside the lock; it only became observable once a
+  //  second concurrent path (lazy read) existed.
+  async migrateDocument(
     docId: string,
-    opts: { skipSteps?: Set<number>; systemOverride?: unknown },
+    opts: { skipSteps?: Set<number>; systemOverride?: unknown } = {},
   ): Promise<MigrationResult> {
     const db = this.getDocumentDb?.();
-    const store = this.getDocumentStore?.();
+    const store = this.getDocumentStore?.() as DocumentStore | undefined;
     if (!db || !store) {
       return { ok: false, atFrom: 0, atTo: 0, error: "document store unavailable" };
     }
-    const doc = store.getById(docId);
-    if (!doc) {
-      return { ok: false, atFrom: 0, atTo: 0, error: `Document ${docId} not found` };
-    }
-    const reg = this.migrationRegistry.get(doc.type);
-    if (!reg) {
-      return {
-        ok: false,
-        atFrom: doc.schemaVersion,
-        atTo: doc.schemaVersion,
-        error: `No migration chain registered for documentType "${doc.type}"`,
-      };
-    }
     let result: RunMigrationsResult | undefined;
-    await this.migrationLock.runExclusive(doc.type, async () => {
+    // Early exits have to cross the lock boundary, so they travel as flags
+    // resolved after it rather than as returns from inside the critical
+    // section.
+    let missing = false;
+    let noChain: { version: number; type: string } | undefined;
+
+    await this.migrationLock.runExclusive(docId, async () => {
+      const doc = store.getById(docId);
+      if (!doc) {
+        missing = true;
+        return;
+      }
+      const reg = this.migrationRegistry.get(doc.type);
+      if (!reg) {
+        noChain = { version: doc.schemaVersion, type: doc.type };
+        return;
+      }
+      // Same cast and the same reasoning as the eager loop: the chain was
+      // registered by an extension that typed it against ITS TSystem, and the
+      // registry erases that at runtime. It is sound because the extension
+      // owns the documentType, and registerMigrations refuses a chain for a
+      // type it does not own.
       result = await runDocumentMigrations(
         db,
-        doc,
-        reg.chain,
+        doc as any,
+        reg.chain as any,
         reg.targetVersion,
         opts,
       );
     });
+
+    if (missing) {
+      return { ok: false, atFrom: 0, atTo: 0, error: `Document ${docId} not found` };
+    }
+    if (noChain) {
+      return {
+        ok: false,
+        atFrom: noChain.version,
+        atTo: noChain.version,
+        error: `No migration chain registered for documentType "${noChain.type}"`,
+      };
+    }
     if (!result) {
-      return { ok: false, atFrom: doc.schemaVersion, atTo: doc.schemaVersion, error: "lock failed" };
+      const v = store.getById(docId)?.schemaVersion ?? 0;
+      return { ok: false, atFrom: v, atTo: v, error: "lock failed" };
     }
     if (result.ok) {
       return { ok: true, fromVersion: result.fromVersion, toVersion: result.toVersion };
@@ -635,6 +679,44 @@ export class ExtensionManager {
       atTo: result.atTo,
       error: result.error.message,
     };
+  }
+
+  //  The declared schemaVersion of a documentType — the single source of
+  //  truth for "current", per §12 ("no está hardcodeada en ningún otro
+  //  sitio — es el schemaVersion que la extensión ya declara en
+  //  contributes.documentTypes"). DocumentStore's resolver and the import
+  //  route both read it from here instead of touching the registry
+  //  themselves, so there is one definition, not two that can drift.
+  currentSchemaVersion(type: string): number | undefined {
+    return this.documentTypeRegistry.get(type)?.type.schemaVersion;
+  }
+
+  //  Lazy migration trigger (§12): "entradas de compendio: lazy, al abrir
+  //  cada una". Called from the two read paths that mean "the user is about
+  //  to look at this document" — api.documents.get and GET /:id — plus the
+  //  import route, which needs the source at its target version.
+  //
+  //  Returns the document to serve, NOT a MigrationResult: a failed
+  //  migration is not an error for the reader. §15/Paso 15 fix that a broken
+  //  chain blocks the document (migration_status='blocked' + snapshot) and
+  //  leaves the extension Active; the reader gets the partially-migrated doc
+  //  with that flag, and writes stay blocked by the existing 409 gate. Only
+  //  a missing document is null.
+  async migrateIfStale<T extends Document = Document>(
+    docId: string,
+  ): Promise<T | null> {
+    const store = this.getDocumentStore?.() as DocumentStore | undefined;
+    if (!store) return null;
+    const before = store.getById(docId) as T | null;
+    if (!before) return null;
+    // No chain registered (base types like "Actor") → nothing to migrate.
+    const reg = this.migrationRegistry.get(before.type);
+    if (!reg) return before;
+    if (before.schemaVersion >= reg.targetVersion) return before;
+    await this.migrateDocument(docId);
+    // Re-read: the runner writes the migrated system + version straight to
+    // SQLite, so the pre-migration snapshot we started from is stale.
+    return (store.getById(docId) as T | null) ?? before;
   }
 }
 

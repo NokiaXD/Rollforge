@@ -1,0 +1,44 @@
+{
+  "id": "compendium",
+  "name": "Compendium",
+  "version": "0.1.0",
+  "engines": {
+    "core": ">=0.1.0"
+  },
+  "activationEvents": [
+    "onReady"
+  ],
+  "contributes": {
+    "documentTypes": [
+      {
+        "id": "compendium-actor",
+        "base": "Actor",
+        "schemaVersion": 2,
+        "scope": "compendium"
+      },
+      {
+        "id": "compendium-monster",
+        "base": "Actor",
+        "schemaVersion": 2
+      }
+    ],
+    "sheets": [
+      {
+        "documentType": "compendium-monster",
+        "component": "MonsterSheet",
+        "default": true
+      }
+    ],
+    "chatCommands": [
+      {
+        "name": "compendio",
+        "description": "Compendios: packs | load <packId>",
+        "requiredPermission": "GM"
+      }
+    ]
+  },
+  "main": {
+    "server": "src/main.server.js",
+    "client": "src/main.client.js"
+  }
+}

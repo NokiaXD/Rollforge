@@ -8,9 +8,11 @@ function makeApi(): ClientExtensionAPI {
     get: <T extends { id: string } = never>(_id: string) => null as T | null,
     subscribe: <T extends { id: string } = never>(_id: string, _fn: (doc: T) => void) => () => {},
     update: async <T extends { id: string } = never>(_id: string, _patch: Partial<T>) => ({}) as T,
+    list: <T extends { id: string } = never>(_type: string) => [] as readonly T[],
   };
   const ui: ClientUIAPI = {
     registerSheet: () => {},
+    registerPanel: () => {},
     notify: () => {},
   };
   const hooksEngine = new HooksEngine();
@@ -53,14 +55,20 @@ describe("freezeClientAPI", () => {
     expect(Object.keys(frozen).sort()).toEqual(["context", "documents", "hooks", "ui"]);
   });
 
-  it("documents surface exposes exactly { get, subscribe, update }", () => {
+  it("documents surface exposes exactly { get, list, subscribe, update }", () => {
     const frozen = freezeClientAPI(makeApi());
-    expect(Object.keys(frozen.documents).sort()).toEqual(["get", "subscribe", "update"]);
+    // `list` added in Paso 18: an extension cannot show a browser over a
+    // collection of documents without a way to enumerate them, and a client
+    // extension has no HTTP client of its own.
+    expect(Object.keys(frozen.documents).sort()).toEqual(["get", "list", "subscribe", "update"]);
   });
 
-  it("ui surface exposes exactly { notify, registerSheet }", () => {
+  it("ui surface exposes exactly { notify, registerPanel, registerSheet }", () => {
     const frozen = freezeClientAPI(makeApi());
-    expect(Object.keys(frozen.ui).sort()).toEqual(["notify", "registerSheet"]);
+    // `registerPanel` added in Paso 18: the first extension-owned surface
+    // that is not a modal sheet. §13 covers the shape of `api` under semver,
+    // so the contract is asserted here and the addition is deliberate.
+    expect(Object.keys(frozen.ui).sort()).toEqual(["notify", "registerPanel", "registerSheet"]);
   });
 
   it("hooks surface is restricted to { filter, off, on } and does not leak HooksEngine", () => {

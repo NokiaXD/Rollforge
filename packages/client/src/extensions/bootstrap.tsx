@@ -1,9 +1,10 @@
-import { DocumentUpdateRejection, freezeClientAPI, type ClientExtensionAPI } from "@rollforge/extension-api";
+import { DocumentUpdateRejection, freezeClientAPI, type ClientExtensionAPI, type ClientPanelRegistration } from "@rollforge/extension-api";
 import { effect } from "@preact/signals";
 import type { Document } from "@rollforge/protocol";
 import { registerSheet, setOwnerMap } from "./clientSheets";
+import { registerPanel } from "./clientPanels";
 import { CustomActorSheet } from "./builtins/customActorSheet";
-import { documents, upsertDocument } from "../state/documents";
+import { documents, listDocumentsByType, upsertDocument } from "../state/documents";
 import { myUserId, currentSceneId } from "../state/scene";
 import { httpPatchDocument } from "./documentTransport";
 import { fetchDocumentTypes } from "../state/extensionSources";
@@ -14,7 +15,7 @@ import { loadClientExtensions } from "./extensionLoader";
 // from the host's transport (signal store + httpPatchDocument), then hands it
 // to the bootstrap sheet or dynamically loaded client extensions.
 export function buildClientAPI(extensionId: string = "client-extension"): ClientExtensionAPI {
-  return freezeClientAPI({
+  const api: ClientExtensionAPI = {
     documents: {
       get: <T extends Document = Document>(id: string): T | null => {
         return (documents.value.get(id) as T | undefined) ?? null;
@@ -44,6 +45,8 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
         if (!next) throw new DocumentUpdateRejection("not-found");
         return next as T;
       },
+      list: <T extends Document = Document>(type: string): readonly T[] =>
+        listDocumentsByType(type) as unknown as readonly T[],
     },
     hooks: {
       // client-side hook surface is intentionally empty — no client
@@ -66,6 +69,16 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
         if (opts.default !== undefined) entry.default = opts.default;
         registerSheet(entry);
       },
+      registerPanel: (opts) => {
+        // Paso 18: forward to the internal panel registry. registerPanel
+        // prefetches the declared documentTypes, so a panel's data is in the
+        // signal store by the time the tab is opened.
+        registerPanel({
+          panel: opts as ClientPanelRegistration,
+          api,
+          extensionId,
+        });
+      },
       notify: (msg) => {
         // console fallback; the real toast system lives elsewhere.
         console.info("[extension-api]", msg);
@@ -75,7 +88,8 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
       userId: myUserId.value ?? "",
       sceneId: currentSceneId.value,
     },
-  });
+  };
+  return freezeClientAPI(api);
 }
 
 //  Static core registrations. BASE_TYPE_OWNERS pre-seeds Actor/Item/Scene

@@ -8,6 +8,7 @@ export interface DocumentTypeEntry {
   extensionId: string;
   base: DocumentTypeContribution["base"];
   schemaVersion: number;
+  scope: DocumentTypeContribution["scope"];
 }
 
 export interface DocumentTypesResponse {
@@ -33,6 +34,10 @@ export function createDocumentTypesRouter(opts: DocumentTypesRouterOpts): Router
         extensionId: entry.extensionId,
         base: entry.type.base,
         schemaVersion: entry.type.schemaVersion,
+        // Undefined for manifests that omit it; the client treats a missing
+        // scope as "campaign" (the default) so this stays a pure observability
+        // field and not a second source of truth.
+        scope: entry.type.scope ?? "campaign",
       }))
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const body: DocumentTypesResponse = { types: list };

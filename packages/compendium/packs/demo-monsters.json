@@ -1,0 +1,60 @@
+{
+  "id": "demo-monsters",
+  "name": "Demo Monsters",
+  "entries": [
+    {
+      "id": "goblin",
+      "name": "Goblin",
+      "schemaVersion": 2,
+      "system": { "ac": 12, "hp": { "current": 7, "max": 7 }, "cr": 0, "traits": ["agarrón"] }
+    },
+    {
+      "id": "hobgoblin",
+      "name": "Hobgoblin",
+      "schemaVersion": 2,
+      "system": { "ac": 16, "hp": { "current": 11, "max": 11 }, "cr": 1, "traits": ["armadura pesada"] }
+    },
+    {
+      "id": "ogre",
+      "name": "Ogro",
+      "schemaVersion": 2,
+      "system": { "ac": 22, "hp": { "current": 59, "max": 59 }, "cr": 3, "traits": ["golpe de adamantita"] }
+    },
+    {
+      "id": "kobold",
+      "name": "Kobold",
+      "schemaVersion": 2,
+      "system": { "ac": 10, "hp": { "current": 5, "max": 5 }, "cr": 0, "traits": ["tunelero"] }
+    },
+    {
+      "id": "direwolf",
+      "name": "Lobo huargo",
+      "schemaVersion": 2,
+      "system": { "ac": 14, "hp": { "current": 12, "max": 12 }, "cr": 1, "traits": ["acecho"] }
+    },
+    {
+      "id": "ancient-dragon",
+      "name": "Dragón ancestral",
+      "schemaVersion": 2,
+      "system": { "ac": 34, "hp": { "current": 172, "max": 172 }, "cr": 8, "traits": ["aliento de fuego"] }
+    },
+    {
+      "id": "old-troll",
+      "name": "Troll de la Cueva",
+      "schemaVersion": 1,
+      "system": { "ac": 15, "hp": { "value": 44, "max": 44 }, "traits": ["regeneración"] }
+    },
+    {
+      "id": "bone-skeleton",
+      "name": "Esqueleto",
+      "schemaVersion": 1,
+      "system": { "ac": 13, "hp": { "value": 13, "max": 13 }, "traits": ["frío"] }
+    },
+    {
+      "id": "legendary-mimic",
+      "name": "Mímico legendario",
+      "schemaVersion": 0,
+      "system": { "hp": { "value": 84, "max": 84 }, "traits": ["adhesivo"] }
+    }
+  ]
+}

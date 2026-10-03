@@ -10,6 +10,7 @@ import {
 } from "../../state/ui";
 import { currentUser } from "../../state/auth";
 import { logout } from "../../net/auth";
+import { listPanels } from "../../extensions/clientPanels";
 
 interface ActivityItem {
   id: SidebarTab;
@@ -23,7 +24,19 @@ export function ActivityBar() {
   const user = currentUser.value;
   const isGM = user?.role === "GM";
 
-  const items: ActivityItem[] = isGM
+  //  Extension-contributed panels (Paso 18) append after the core tabs, for
+  //  GM and Player alike: an extension that wants a role-specific panel
+  //  renders nothing in its component rather than the core guessing on its
+  //  behalf. listPanels() reads a plain array, not a signal, so the bar
+  //  re-renders whenever the sidebar re-renders (activation happens during
+  //  bootstrap, before first paint).
+  const panelItems: ActivityItem[] = listPanels().map((p) => ({
+    id: p.panel.id,
+    label: p.panel.title,
+    icon: p.panel.icon ?? "\ue8b6",
+  }));
+
+  const coreItems: ActivityItem[] = isGM
     ? [
         { id: "scenes", label: "Gestor de Escenas", icon: "\uec05" },
         { id: "actors", label: "Actores y Fichas", icon: "\ue902" },
@@ -33,6 +46,7 @@ export function ActivityBar() {
         { id: "actors", label: "Mis Actores", icon: "\ue902" },
         { id: "tokens", label: "Tokens en Escena", icon: "\uedca" },
       ];
+  const items = [...coreItems, ...panelItems];
 
   const handleUserMenu = (e: MouseEvent) => {
     e.preventDefault();

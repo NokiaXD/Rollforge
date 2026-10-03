@@ -153,7 +153,35 @@ describe("/api/document-types", () => {
           extensionId: "example-rpg",
           base: "Actor",
           schemaVersion: 2,
+          // Paso 18: manifests that omit scope are reported as "campaign" so
+          // the client never has to handle undefined.
+          scope: "campaign",
         },
+      ]);
+    });
+  });
+
+  it("reports scope: compendium for read-only pack wrapper types", () => {
+    const manifest: ExtensionManifest = {
+      id: "compendium-x",
+      name: "Compendium X",
+      version: "0.1.0",
+      engines: { core: ">=0.1.0" },
+      activationEvents: ["onReady"],
+      contributes: {
+        documentTypes: [
+          { id: "pack-actor", base: "Actor", schemaVersion: 2, scope: "compendium" },
+          { id: "camp-actor", base: "Actor", schemaVersion: 2 },
+        ],
+      },
+    };
+    server.extensions.registerExtension({ manifest, activate: () => {} });
+
+    return request(port, "GET", "/api/document-types", gmCookie).then((r) => {
+      const body = JSON.parse(r.body) as DocumentTypesResponse;
+      expect(body.types.map((t) => [t.id, t.scope])).toEqual([
+        ["camp-actor", "campaign"],
+        ["pack-actor", "compendium"],
       ]);
     });
   });

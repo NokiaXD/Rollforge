@@ -43,12 +43,23 @@ export type DocumentInput<TSystem = Record<string, unknown>> =
 
 export class DocumentStore {
   private readonly db: DB;
-  private readonly getCurrentSchemaVersion: (type: string) => number | undefined;
+  private getCurrentSchemaVersion: (type: string) => number | undefined;
 
   constructor(db: DB, opts: DocumentStoreOpts = {}) {
     this.db = db;
     this.getCurrentSchemaVersion = opts.getCurrentSchemaVersion ?? (() => undefined);
     this.db.exec(SCHEMA);
+  }
+
+  //  The ExtensionManager is built AFTER the store in both construction
+  //  paths (server.ts builds its own at :85; main.ts hands one in), and it
+  //  owns the only source of truth for a type's current schemaVersion
+  //  (§12: the number the extension declares in contributes.documentTypes).
+  //  A constructor arg can't reach it, so the host injects the resolver
+  //  once the manager exists. Without it every contributed type's documents
+  //  were born at 0 and walked the whole chain on first write.
+  setSchemaVersionResolver(fn: (type: string) => number | undefined): void {
+    this.getCurrentSchemaVersion = fn;
   }
 
   close(): void {

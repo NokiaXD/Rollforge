@@ -25,7 +25,7 @@ Verify it's indexed before relying on it (`codebase_index_status`); re-index wit
 ## Commands
 
 - `pnpm install` from repo root.
-- `pnpm dev` — runs every package's `dev` script in parallel (`server` on `:3000`, `client` on `:5173`).
+- `pnpm dev` — runs every package's `dev` script in parallel (`server` on `:3000`, `client` on `:5173`). Goes through `scripts/dev.mjs`, which presets `ROLLFORGE_EXTENSIONS=<repo>/packages` so `example-rpg` loads; export the var yourself to override.
 - `pnpm -r build` — builds all. Server uses `tsup`, client uses `vite build`, protocol/extension-api use `tsc -b`.
 - `pnpm -r test` — vitest everywhere. `client`/`server` have `--passWithNoTests`; `protocol`/`extension-api` fail on missing tests.
 - `pnpm lint` — eslint flat config, covers `packages/*/src/**/*.ts`.
@@ -82,16 +82,21 @@ Common picks: ✨ `:sparkles:` feature · 🐛 `:bug:` fix · 📝 `:memo:` docs
 
 ## Known gaps (don't be surprised)
 
-- `pnpm.onlyBuiltDependencies: ["esbuild"]` is pinned in root `package.json`; do not remove or pnpm will refuse to build native deps.
+- `onlyBuiltDependencies: ["esbuild", "better-sqlite3"]` is pinned in `pnpm-workspace.yaml`; do not remove or pnpm will refuse to build native deps. (pnpm 10 ignores it in `package.json` — that is where the warning came from.)
 - `packageManager: pnpm@10.19.0` — keep Corepack enabled, do not switch package managers casually.
-- `activeSceneId` lives in memory only (`sync/sceneState.ts`); restarting the server falls back to `default` even though scenes themselves persist. One `DocumentStore` write fixes it.
 - `authorizeAction` (`security/authorize.ts`) is a placeholder that always returns `true` — chat permission checks are not centralized yet.
-- Whispers are deliberately not persisted (`server.ts` returns before `chatStore.append`); only `chat` and `roll` kinds are stored.
-- There is no **client-side** extension host. `extension-api/src/client.ts` is types only; disk extensions load server-side only.
+- Whispers are persisted in `chatStore` with `whisper_to` and scoped in `recent()` so only sender and recipient receive them in `chatHistory`.
+- The client extension host exists but is thin: `client/src/extensions/extensionLoader.ts` fetches `/api/extension-sources` and imports each `main.client.js` raw, handing it a `ClientExtensionAPI` from `buildClientAPI(extensionId)`. Client hooks are silent no-ops, and the import map only exists under the Vite dev server.
+- Document types can declare `scope: "compendium"` (`contributes.documentTypes[].scope`). Those types are (a) excluded from the eager migration loop, (b) read-only over HTTP (POST/PATCH/DELETE → 403). The owning extension still writes them in-process. `lint.documentWrites.test.ts` keeps the allowlist of files that may write the `documents` table, so a new writer has to decide about that gate.
+- `POST /api/documents` accepts `{ id, type, sourceId }` with **no** `system` to import an existing document (compendium entries, duplicate actors). The host resolves the source, migrates it if stale, and refuses blocked (`409 migration-blocked`) or too-new (`409 schema-too-new`) sources. A client-supplied `schemaVersion` is discarded in both the create and the import branch.
+- Drag & drop from a compendium to the scene is **not** built yet (plan § Paso 18, "Pendiente"). The drop would be `POST { sourceId, type }` + `createTokenRequest`, but dnd-kit is not exposed to extension code.
+- `clientSheets.ts` infers each `documentType`'s owner from the order of `registerSheet` calls. The server uses the declarative `DocumentTypeRegistry` instead. They agree today only because the bootstrap is the sole client-side registration; this will diverge the first time a real Fase 2 extension contributes a sheet client-side. Plan + fix in `docs/plan-implementacion.md` § Paso 17.
+- Document IDs are strictly validated on creation in `DocumentStore.save()` (`/^[a-zA-Z0-9_-]{1,128}$/`), centralizing rejection of path traversal / control characters across both HTTP routes and extension API.
+
 
 ## Extensions
 
-- Layout on disk: `<dataDir>/extensions/<id>/extension.json` + `main.server.js`. Override the root with `extensionsDir` or `ROLLFORGE_EXTENSIONS`. A missing directory is a no-op.
+- Layout on disk: `<dataDir>/extensions/<id>/extension.json` + `main.server.js`. Override the root with `extensionsDir` or `ROLLFORGE_EXTENSIONS`. A missing directory is a no-op. Client-side entries (`main.client.js`) are served raw at `/api/extension-sources/:id.js`; their bare imports (`preact`, `preact/hooks`, `@rollforge/*`) resolve through the import map in `packages/client/index.html`, which only exists under the Vite dev server — serving the built client from Express still needs that map replaced.
 - `main.server` is a plain ESM module dynamically imported by `extensions/loader.ts` with `pathToFileURL` — a raw Windows path is not a valid `import()` specifier. It must stay inside the extension folder.
 - Discovery is per-extension fault-tolerant and idempotent: a broken manifest, an incompatible `engines.core` or a missing entry file is logged and skipped, never thrown. Already-registered ids are skipped, so re-running the loader is safe.
 - Disk extensions are registered **before** the first `dispatchActivationEvent("onReady")` — registering later would make an `onReady` extension invisible forever.
@@ -112,4 +117,6 @@ Common picks: ✨ `:sparkles:` feature · 🐛 `:bug:` fix · 📝 `:memo:` docs
 - `packages/client/src/net/socket.ts` — `connectSocket`, `joinScene`, `sendIntent`, `createTokenRequest`.
 - `packages/client/src/canvas/{pixiApp,sceneRenderer,tokens,grid}.ts` — canvas layer.
 - `packages/client/src/state/scene.ts` — signals + `applyEvent` reducer.
+- `packages/client/src/extensions/{bootstrap,clientPanels}.tsx|ts` — the client host: builds the frozen `ClientExtensionAPI` and holds the sheet + panel registries.
+- `packages/compendium` — the official compendium extension (Paso 18): two documentTypes, one chain, a JSON pack, `/compendio packs|load`. Its `main.client.js` registers a sidebar panel and the imported-monster sheet.
 - `packages/protocol/src/{documents,messages,hooks,manifest,dice}.ts` — wire types + dice notation. Edit here first when adding a new intent/event.

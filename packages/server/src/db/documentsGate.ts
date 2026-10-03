@@ -38,3 +38,21 @@ export function isMigrationUnblocked(
   if (!row) return true;
   return row.migrationStatus === "ok";
 }
+
+// Paso 18: a documentType declared with scope "compendium" holds one
+// read-only document per pack entry. Nobody edits those in place — you
+// import the entry into campaign state instead, which produces a NEW
+// document of a campaign-scoped type (see the import branch in
+// documentRoutes). Without this a GM could fork a pack entry by PATCHing
+// it, and the pack would silently diverge from the source JSON.
+//
+// Deliberately NOT enforced in api.documents.update: the owning extension
+// populates its own pack in-process and must be able to write there. The
+// extension is server-side code, not an untrusted client; the gate exists
+// for the external write paths.
+export function isReadOnlyType(
+  manager: ExtensionManager,
+  type: string,
+): boolean {
+  return manager.documentTypeRegistry.get(type)?.type.scope === "compendium";
+}

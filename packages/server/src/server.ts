@@ -251,6 +251,16 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     },
   });
 
+  //  Single wiring point for "what is the current schemaVersion of a type".
+  //  It has to happen after the manager exists (the manager owns the
+  //  registry) but before any document is written, and it covers both
+  //  construction paths: the store this server built at :85 and the one
+  //  main.ts hands in. §12: the number comes from the extension's
+  //  contributes.documentTypes, nowhere else.
+  if (store) {
+    store.setSchemaVersionResolver((type) => extensions.currentSchemaVersion(type));
+  }
+
   const shouldRegisterBuiltins = opts.registerBuiltins ?? true;
   if (shouldRegisterBuiltins) {
     for (const b of BUILTINS) {

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { createRollforgeServer, listen, type RollforgeServer } from "../server";
-import type { Document } from "@rollforge/protocol";
+import type { Document, ExtensionManifest, MigrationStep } from "@rollforge/protocol";
+import type { DocumentStore } from "./documentStore";
 
 interface HttpResp {
   status: number;
@@ -251,5 +252,231 @@ describe("documents HTTP integration", () => {
     expect(fetched.migrationStatus).toBe("ok");
     // Provide confirmation the stale-rev 409 works correctly
     expect(r2.status).toBe(200); // second PATCH used the updated _rev from the store
+  });
+});
+
+// Paso 18 — compendium import + the read-only gate on pack wrapper types.
+// These drive the real HTTP surface (node:http against a listening server),
+// the same thing a curl would do: no UI helper filters anything before the
+// request, so a missing gate fails here instead of hiding behind a disabled
+// button.
+describe("compendium import + scope gate", () => {
+  let server: RollforgeServer;
+  let port: number;
+  let dataDir: string;
+  let gmCookie: string;
+  let store: DocumentStore;
+
+  const manifest: ExtensionManifest = {
+    id: "compendium-x",
+    name: "Compendium X",
+    version: "1.0.0",
+    engines: { core: ">=0.1.0" },
+    activationEvents: ["onReady"],
+    contributes: {
+      documentTypes: [
+        { id: "pack-actor", base: "Actor", schemaVersion: 2, scope: "compendium" },
+        { id: "camp-actor", base: "Actor", schemaVersion: 2 },
+      ],
+    },
+  };
+
+  // Data-dependent: only entries whose v1 system has a numeric `ac` make it
+  // through 1→2. One chain, per-DOCUMENT blast radius (Paso 15).
+  const chain: MigrationStep<any>[] = [
+    { from: 0, to: 1, up: (s: any) => ({ ...s, label: s.name ?? "?" }) },
+    {
+      from: 1,
+      to: 2,
+      up: (s: any) => {
+        if (typeof s.ac !== "number") throw new Error("missing ac");
+        return { ...s, hpMax: s.ac + 5 };
+      },
+    },
+  ];
+
+  function seedPackEntry(id: string, schemaVersion: number, system: Record<string, unknown>): void {
+    store.save({ id, type: "pack-actor", name: id, system, flags: {}, ownership: {}, schemaVersion });
+  }
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), "rollforge-compendium-"));
+    server = createRollforgeServer({ dataDir, auth: { cookieSecure: false } });
+    port = await listen(server, 0);
+    gmCookie = await registerUser(port, "pwpwpwpw");
+    const storeRef = server.store;
+    if (!storeRef) throw new Error("server built without a store");
+    store = storeRef;
+
+    server.extensions.registerExtension({
+      manifest,
+      activate: (api) => {
+        api.documents.registerMigrations("pack-actor", chain);
+        api.documents.registerMigrations("camp-actor", chain);
+      },
+    });
+    await server.extensions.ensureActivated("compendium-x");
+
+    // A healthy v0 entry, a broken v1 entry (no `ac`), and an entry from the
+    // future (v5 — newer than either type declares).
+    seedPackEntry("pack-goblin", 0, { name: "Goblin", ac: 12 });
+    seedPackEntry("pack-broken", 1, { name: "Broken" });
+    seedPackEntry("pack-future", 5, { name: "From The Future", ac: 99 });
+  });
+
+  afterEach(async () => {
+    await server.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it("imports an entry into campaign state: host copies the MIGRATED system", async () => {
+    const newId = "camp-imported-1";
+    // Note the body: no `system` at all. The host resolves the source, and
+    // only the host decides what content gets copied.
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: newId, type: "camp-actor", sourceId: "pack-goblin", ownership: { default: "LIMITED" } },
+    });
+    expect(r.status).toBe(201);
+    const created = JSON.parse(r.body) as Document;
+    expect(created.type).toBe("camp-actor");
+    expect(created.schemaVersion).toBe(2);
+    expect(created.migrationStatus).toBe("ok");
+    // hpMax only exists if the 1→2 step actually ran on the copied content.
+    expect((created.system as any).hpMax).toBe(17);
+    expect(created.ownership).toEqual({ default: "LIMITED" });
+
+    // The source got migrated as a side effect (that IS the lazy trigger).
+    expect(store.getById("pack-goblin")?.schemaVersion).toBe(2);
+    // And the copy is independently editable — the import changes the type,
+    // so the compendium read-only gate no longer applies to it.
+    const patch = await request({
+      port, method: "PATCH", path: `/api/documents/${newId}`, cookie: gmCookie,
+      body: { "system.hpMax": 30 },
+    });
+    expect(patch.status).toBe(200);
+  });
+
+  it("refuses to import a blocked entry: 409, and nothing is created", async () => {
+    const newId = "camp-imported-blocked";
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: newId, type: "camp-actor", sourceId: "pack-broken" },
+    });
+    expect(r.status).toBe(409);
+    expect(JSON.parse(r.body)).toEqual({ error: "migration-blocked", id: "pack-broken" });
+    // The id was fixed before the request; it must never have appeared.
+    expect(store.getById(newId)).toBeNull();
+    // The failure came from the chain really breaking, not a pre-seeded flag.
+    expect(store.getById("pack-broken")?.migrationStatus).toBe("blocked");
+  });
+
+  it("refuses a source that is newer than the target type knows (§12)", async () => {
+    const newId = "camp-imported-future";
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: newId, type: "camp-actor", sourceId: "pack-future" },
+    });
+    expect(r.status).toBe(409);
+    // Only the two numbers: the document body is pack content the caller may
+    // not be entitled to, and every other rejection here answers with just the id.
+    expect(JSON.parse(r.body)).toEqual({ error: "schema-too-new", source: 5, target: 2 });
+    expect(store.getById(newId)).toBeNull();
+  });
+
+  it("404s an import from a source that does not exist", async () => {
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: "camp-x", type: "camp-actor", sourceId: "pack-nope" },
+    });
+    expect(r.status).toBe(404);
+    expect(JSON.parse(r.body)).toEqual({ error: "not-found" });
+  });
+
+  it("import still requires auth and GM", async () => {
+    const anon = await request({
+      port, method: "POST", path: "/api/documents",
+      body: { id: "c1", type: "camp-actor", sourceId: "pack-goblin" },
+    });
+    expect(anon.status).toBe(401);
+    const playerCookie = await registerUser(port, "pwpwpwpw");
+    const asPlayer = await request({
+      port, method: "POST", path: "/api/documents", cookie: playerCookie,
+      body: { id: "c2", type: "camp-actor", sourceId: "pack-goblin" },
+    });
+    expect(asPlayer.status).toBe(403);
+  });
+
+  it("GET /:id migrates a stale entry lazily (reads pass, migration is silent)", async () => {
+    const r = await request({ port, method: "GET", path: "/api/documents/pack-goblin", cookie: gmCookie });
+    expect(r.status).toBe(200);
+    const doc = JSON.parse(r.body) as Document;
+    expect(doc.schemaVersion).toBe(2);
+    expect((doc.system as any).hpMax).toBe(17);
+  });
+
+  it("GET /:id on a broken entry still returns 200 with migration_status=blocked", async () => {
+    const r = await request({ port, method: "GET", path: "/api/documents/pack-broken", cookie: gmCookie });
+    expect(r.status).toBe(200);
+    const doc = JSON.parse(r.body) as Document;
+    expect(doc.migrationStatus).toBe("blocked");
+    expect(doc.schemaVersion).toBe(1);
+  });
+
+  it("pack wrapper documents are read-only over HTTP: POST, PATCH and DELETE all 403", async () => {
+    const post = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: "pack-forged", type: "pack-actor", name: "Forged", system: { ac: 1 } },
+    });
+    expect(post.status).toBe(403);
+    expect(JSON.parse(post.body)).toEqual({ error: "read-only", type: "pack-actor" });
+    expect(store.getById("pack-forged")).toBeNull();
+
+    const patch = await request({
+      port, method: "PATCH", path: "/api/documents/pack-goblin", cookie: gmCookie,
+      body: { name: "Edited" },
+    });
+    expect(patch.status).toBe(403);
+    expect(JSON.parse(patch.body)).toEqual({ error: "read-only", type: "pack-actor" });
+
+    const del = await request({ port, method: "DELETE", path: "/api/documents/pack-goblin", cookie: gmCookie });
+    expect(del.status).toBe(403);
+    expect(store.getById("pack-goblin")).not.toBeNull();
+  });
+
+  it("refuses an import INTO a compendium type", async () => {
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: "pack-copy", type: "pack-actor", sourceId: "pack-goblin" },
+    });
+    expect(r.status).toBe(403);
+    expect(store.getById("pack-copy")).toBeNull();
+  });
+
+  it("a plain POST cannot dictate the document's schemaVersion", async () => {
+    // The sibling hole: the same save() call serves normal creates, so a
+    // client-supplied schemaVersion would ride the spread and claim a doc is
+    // already migrated (skipping every future chain) or force it backwards.
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: "forced-v", type: "Actor", name: "Forced", system: { hp: 1 }, flags: {}, schemaVersion: 99 },
+    });
+    expect(r.status).toBe(201);
+    const created = JSON.parse(r.body) as Document;
+    // "Actor" is a base type: no contribution, so the resolver has no number
+    // and the store's default (0) applies — never the client's 99.
+    expect(created.schemaVersion).toBe(0);
+    expect(store.getById("forced-v")?.schemaVersion).toBe(0);
+  });
+
+  it("a plain POST of a contributed type is born at that type's declared version", async () => {
+    const r = await request({
+      port, method: "POST", path: "/api/documents", cookie: gmCookie,
+      body: { id: "born-current", type: "camp-actor", name: "Fresh", system: { ac: 3 } },
+    });
+    expect(r.status).toBe(201);
+    // getCurrentSchemaVersion is wired from the manifest declaration, so a
+    // new document of a v2 type starts at v2 instead of walking 0→2.
+    expect((JSON.parse(r.body) as Document).schemaVersion).toBe(2);
   });
 });

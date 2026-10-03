@@ -1,6 +1,11 @@
 import { signal } from "@preact/signals";
 
-export type SidebarTab = "scenes" | "tokens" | "actors";
+//  Core tabs are a fixed union; extension panels (Paso 18's
+//  api.ui.registerPanel) add their own ids at runtime, so the tab is just a
+//  string. The core views are matched by their literal ids; anything else is
+//  looked up in the panel registry.
+export type CoreSidebarTab = "scenes" | "tokens" | "actors";
+export type SidebarTab = CoreSidebarTab | (string & {});
 
 export const activeSidebarTab = signal<SidebarTab | null>("scenes");
 export const openDocument = signal<string | null>(null);
