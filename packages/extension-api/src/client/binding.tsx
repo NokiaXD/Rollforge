@@ -13,7 +13,7 @@ export interface BoundInputProps {
   placeholder?: string;
   className?: string;
   onSaved?: (next: unknown) => void;
-  // ponytail: i18n passed through; defaults to ES strings below. Hard-coded
+  // i18n passed through; defaults to ES strings below. Hard-coded
   // for now per plan §7 — replace with the global i18n table in a future pass.
   messages?: Partial<Record<DocumentUpdateRejectionReason | "ok", string>>;
 }
@@ -63,17 +63,20 @@ export function createBoundInput(api: ClientExtensionAPI) {
     messages: propMessages,
   }: BoundInputProps) {
     const localMessages = useMemo(() => makeMessages(propMessages), [propMessages]);
-    // ponytail: per-instance signal for live read; re-reads on doc change.
+    // per-instance signal for live read; re-reads on doc change.
+    // `path` is intentionally NOT a dependency — the signal holds the whole
+    // document, not a specific field. Recreating on path changes would lose
+    // already-received subscription updates.
     const liveSignal = useMemo(
       () => signal<Document | null>(api.documents.get<Document>(documentId)),
-      [documentId, path],
+      [documentId],
     );
     useEffect(
       () =>
         runEffect(() => {
           liveSignal.value = api.documents.get<Document>(documentId);
         }),
-      [documentId, path],
+      [documentId],
     );
 
     const [draft, setDraft] = useState(() =>

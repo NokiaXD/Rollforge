@@ -67,7 +67,7 @@ describe("freezeClientAPI", () => {
     const frozen = freezeClientAPI(makeApi());
     const keys = Object.keys(frozen.hooks).sort();
     expect(keys).toEqual(["filter", "off", "on"]);
-    // ponytail: regression guard — the host builds the engine inside the closure;
+    // regression guard — the host builds the engine inside the closure;
     // the public surface must not expose `emit`, `runFilter`, or `clear`.
     const hooksAsAny = frozen.hooks as unknown as Record<string, unknown>;
     expect(hooksAsAny["emit"]).toBeUndefined();

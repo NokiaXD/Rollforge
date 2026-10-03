@@ -92,6 +92,10 @@ export interface UsersAPI {
 }
 
 export interface ExtensionHooksAPI {
+  // These return void by design — the API does not expose unsub handles.
+  // To stop receiving an event, call `api.hooks.off(event, handler)` with
+  // the same handler reference. Keeping the return void prevents extensions
+  // from accumulating unsub closures they forget to call.
   on<T = unknown>(event: HookName, handler: NotifyHandler<T>): void;
   filter<T = unknown>(event: HookName, handler: FilterHandler<T>, opts?: { priority?: number }): void;
   off(event: HookName, handler: NotifyHandler<any> | FilterHandler<any>): void;

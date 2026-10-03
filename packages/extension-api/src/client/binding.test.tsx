@@ -19,7 +19,7 @@ const sampleDoc: Document = {
   _rev: 1,
 };
 
-// ponytail: vi.fn() can't carry a generic through to its inferred Mock type,
+// vi.fn() can't carry a generic through to its inferred Mock type,
 // so we cast the documents surface to ClientDocumentsAPI directly. Runtime
 // behavior is unchanged.
 function makeApi(overrides?: Partial<ClientExtensionAPI>): ClientExtensionAPI {
@@ -43,7 +43,7 @@ function mountInto(node: Element, vnode: preact.VNode): void {
   render(vnode, node);
 }
 
-// ponytail: render attaches to a node and returns nothing. preact's
+// render attaches to a node and returns nothing. preact's
 // useEffect requires the DOM node to be attached (it walks _parentDom in
 // flushAfterPaintEffects). This wrapper is the only mount path used by the
 // binding tests; keep it thin.
@@ -76,7 +76,7 @@ describe("createBoundInput", () => {
     const input = host.querySelector("input") as HTMLInputElement;
     input.value = "42";
     input.dispatchEvent(new Event("input"));
-    // ponytail: pre-debounce, no update call yet.
+    // pre-debounce, no update call yet.
     expect(api.documents.update).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(400);
     expect(api.documents.update).toHaveBeenCalledWith("doc-1", { "system.hp.value": 42 });
@@ -99,7 +99,7 @@ describe("createBoundInput", () => {
     input.value = "Other";
     input.dispatchEvent(new Event("input"));
     await vi.advanceTimersByTimeAsync(400);
-    // ponytail: re-render after the await — flush microtasks + effects.
+    // re-render after the await — flush microtasks + effects.
     await Promise.resolve();
     const status = host.querySelector("[data-status]");
     expect(status).not.toBeNull();
@@ -131,7 +131,7 @@ describe("createBoundInput", () => {
   });
 
   it("subscribes via api.documents.subscribe on mount and unsubscribes on unmount", async () => {
-    // ponytail: this test runs in isolation; running it after other tests
+    // this test runs in isolation; running it after other tests
     // that leave RAF timers pending interferes with the queue. The other
     // tests' advance pattern still drains the queue, so we mirror it here.
     const unsubscribeSpy = vi.fn();
@@ -146,7 +146,7 @@ describe("createBoundInput", () => {
     const BoundInput = createBoundInput(api);
     const host = document.createElement("div");
     mountInto(host, <BoundInput path="name" documentId="doc-1" />);
-    // ponytail: preact's useEffect flushes via requestAnimationFrame → setTimeout
+    // preact's useEffect flushes via requestAnimationFrame → setTimeout
     // chain. We click an input to schedule a debounced setTimeout, then advance
     // past RAF_TIMEOUT (35ms) + the debounce (350ms) to drain everything in
     // one shot — same shape as the commit-debounce test.
@@ -167,7 +167,7 @@ describe("createBoundInput", () => {
       documents: {
         get: (id: string) => (id === sampleDoc.id ? docsSig.value : null),
         subscribe: (_id: string, fn: (doc: Document) => void) => {
-          // ponytail: simulate a server-driven update by reading from a signal.
+          // simulate a server-driven update by reading from a signal.
           let last = docsSig.value;
           return (globalThis as { __rf_raf?: number }).__rf_raf
             ? () => {}
