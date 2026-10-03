@@ -179,4 +179,16 @@ describe("DocumentStore", () => {
     expect(refetched?.migrationStatus).toBe("blocked");
     db.close();
   });
+
+  it("save rejects invalid id formats (path traversal, special chars, empty)", () => {
+    const db = openTestDb(dbPath);
+    const store = new DocumentStore(db);
+    expect(() => store.save(sampleToken("../evil"))).toThrow(/invalid document id/);
+    expect(() => store.save(sampleToken("path/slash"))).toThrow(/invalid document id/);
+    expect(() => store.save(sampleToken("with space"))).toThrow(/invalid document id/);
+    expect(() => store.save(sampleToken(""))).toThrow(/invalid document id/);
+    expect(() => store.save(sampleToken("a".repeat(129)))).toThrow(/invalid document id/);
+    db.close();
+  });
 });
+

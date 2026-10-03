@@ -75,6 +75,11 @@ export class DocumentStore {
 
   save<TSystem>(doc: DocumentInput<TSystem>): Document<TSystem> {
     const tx = this.db.transaction((input: DocumentInput<TSystem>) => {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(input.id)) {
+        throw new Error(
+          `invalid document id "${input.id}": must match [a-zA-Z0-9_-]{1,128}`,
+        );
+      }
       const existing = this.db.prepare("SELECT id FROM documents WHERE id = ?").get(input.id);
       if (existing) throw new Error(`document ${input.id} already exists; use update()`);
       const schemaVersion =

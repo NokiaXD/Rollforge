@@ -67,6 +67,12 @@ export function createDocumentRouter(opts: DocumentRoutesOpts): Router {
     ) {
       return res.status(400).json({ error: "bad-request" });
     }
+    // Validate id format: only safe characters, no path segments or control
+    // chars. SQLite parameterized queries are not at risk, but a path-like id
+    // could break future code that uses the id in a file path or URL segment.
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(input.id)) {
+      return res.status(400).json({ error: "bad-request", detail: "id must match [a-zA-Z0-9_-]{1,128}" });
+    }
     if (
       opts.extensionManager &&
       !isExtensionReady(opts.extensionManager, input.type)
