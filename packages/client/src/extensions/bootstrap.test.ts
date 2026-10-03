@@ -134,7 +134,7 @@ describe("httpPatchDocument translation table", () => {
   });
 
   it("returns the body verbatim on 200 even when jsonReject is true (response.json throws)", async () => {
-    // ponytail: 200 with an unparseable body shouldn't reject; bootstrap.ts
+    // 200 with an unparseable body shouldn't reject; bootstrap.ts
     // only needs to know the request succeeded. Body remains undefined.
     const fetchImpl = fakeFetch({ status: 200, jsonReject: true });
     const result = await httpPatchDocument("doc-1", {}, fetchImpl);

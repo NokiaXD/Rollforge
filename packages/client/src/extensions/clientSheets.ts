@@ -18,22 +18,40 @@ interface InternalSheetEntry {
   previousDefault?: ClientSheetEntry;
 }
 
+//  server is the source of truth for extension-owned document types. The
+// client mirrors that ownership here for `registerSheet({ default: true })` to
+// validate against. Base types are seeded inline because the server never
+// registers them (it only carries contributed types in DocumentTypeRegistry)
+// and the core sheet for Actor is already part of bootstrap — seeding here
+// removes the silent dependency that the static sheet registered before
+// setOwnerMap arrived.
+const BASE_TYPE_OWNERS: Readonly<Record<string, string>> = Object.freeze({
+  Actor: "core:custom-actor-sheet",
+  Item: "core",
+  Scene: "core",
+});
+
 const sheets: InternalSheetEntry[] = [];
-const ownerByType = new Map<string, string>();
+const ownerByType = new Map<string, string>(Object.entries(BASE_TYPE_OWNERS));
 
 export function registerSheet(entry: ClientSheetEntry): void {
-  // First-ever registration for a type sets the owner. Without an extensionId,
-  // the slot is owned by "<unnamed>" — anonymous ownership is allowed, but two
-  // anonymous registrations for the same type still conflict (see below).
-  if (!ownerByType.has(entry.documentType)) {
-    ownerByType.set(entry.documentType, entry.extensionId ?? "");
-  }
-  const ownerId = ownerByType.get(entry.documentType)!;
   const newId = entry.extensionId ?? "";
 
   if (entry.default !== true) {
     sheets.push({ entry });
     return;
+  }
+
+  // Default sheets must match the owner declared by the server's
+  // DocumentTypeRegistry (or the BASE_TYPE_OWNERS seed for Actor/Item/Scene).
+  // No "first wins" inference — the source of truth comes from
+  // /api/document-types via setOwnerMap.
+  const ownerId = ownerByType.get(entry.documentType);
+  if (ownerId === undefined) {
+    throw new SheetOwnerConflict(entry.documentType, "", newId);
+  }
+  if (newId !== ownerId) {
+    throw new SheetOwnerConflict(entry.documentType, ownerId, newId);
   }
 
   const existingIdx = sheets.findIndex(
@@ -47,14 +65,19 @@ export function registerSheet(entry: ClientSheetEntry): void {
 
   const existing = sheets[existingIdx]!;
 
-  // Same owner can override silently and keep a one-deep history for restoration.
-  // Anyone else gets an explicit error — same class as the server's SheetRegistry
-  // (see SheetOwnerConflict in @rollforge/protocol). Mirrors §16's policy.
-  if (newId !== ownerId) {
-    throw new SheetOwnerConflict(entry.documentType, ownerId, newId);
-  }
-
+  // Same owner overrides silently and keeps a one-deep history for restoration.
   sheets[existingIdx] = { entry, previousDefault: existing.entry };
+}
+
+// Merge the server's `documentType → extensionId` map onto the owner table.
+// Pre-seeded base types are preserved (a partial merge, never a total
+// replacement) so a wrong payload cannot accidentally drop ownership of
+// Actor/Item/Scene. Idempotent — safe to call once at bootstrap.
+export function setOwnerMap(map: Record<string, string | undefined>): void {
+  for (const [type, owner] of Object.entries(map)) {
+    if (owner === undefined) continue;
+    ownerByType.set(type, owner);
+  }
 }
 
 export function clearSheetsFor(extensionId: string): void {
@@ -62,22 +85,14 @@ export function clearSheetsFor(extensionId: string): void {
     const s = sheets[i]!;
     if (s.entry.extensionId !== extensionId) continue;
     if (s.previousDefault) {
-      // Restore the prior default. Ownership transfers to whoever the restored
-      // entry belongs to (or "" if anonymous). previousDefault is consumed — a
-      // chain doesn't grow on repeated override→deactivate cycles.
+      // Restore the prior default. Ownership is owned by the server-side
+      // registry and not transferred by deactivate; we keep the ownerByType
+      // entry intact.
       const restored = s.previousDefault;
       sheets[i] = { entry: restored, previousDefault: undefined };
-      ownerByType.set(s.entry.documentType, restored.extensionId ?? "");
     } else {
       sheets.splice(i, 1);
     }
-  }
-  // If the deactivated extension was the original owner of a type and nothing
-  // remains for that type, drop the ownership so a later extension can claim it.
-  for (const [type, owner] of [...ownerByType]) {
-    if (owner !== extensionId) continue;
-    const remaining = sheets.some((s) => s.entry.documentType === type);
-    if (!remaining) ownerByType.delete(type);
   }
 }
 
@@ -99,4 +114,7 @@ export function listSheets(): readonly ClientSheetEntry[] {
 export function clearSheets(): void {
   sheets.length = 0;
   ownerByType.clear();
+  for (const [type, owner] of Object.entries(BASE_TYPE_OWNERS)) {
+    ownerByType.set(type, owner);
+  }
 }
