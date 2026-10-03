@@ -6,10 +6,12 @@ import type { Document, MigrationChain } from "@rollforge/protocol";
 // leave it at the schemaVersion of the failing step so a future re-attempt
 // picks up where we left off (skipSteps + systemOverride come from the GM
 // review path, see builtin migrations.ts).
+// skipSteps/systemOverride are only used by the GM /migrations review path.
+// There is deliberately no skipSnapshot option: the snapshot table is an
+// append-only audit trail (§12); every failed step must leave a record.
 export interface RunMigrationsOpts {
   skipSteps?: Set<number>;
   systemOverride?: unknown;
-  skipSnapshot?: boolean;
 }
 
 export type RunMigrationsResult =
@@ -57,26 +59,24 @@ export async function runDocumentMigrations<TSystem>(
       const error = err instanceof Error ? err : new Error(String(err));
       try {
         const writeSnap = db.transaction(() => {
-          if (!opts.skipSnapshot) {
-            db.prepare(
-              `INSERT INTO document_migration_snapshots
-                (doc_id, doc_type, prev_version, new_version, status, snapshot_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            ).run(
-              doc.id,
-              doc.type,
-              step.from,
-              step.from,
-              "failed",
-              JSON.stringify({
-                system: doc.system,
-                flags: doc.flags,
-                ownership: doc.ownership,
-                ...(doc.img !== undefined ? { img: doc.img } : {}),
-              }),
-              Date.now(),
-            );
-          }
+          db.prepare(
+            `INSERT INTO document_migration_snapshots
+              (doc_id, doc_type, prev_version, new_version, status, snapshot_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            doc.id,
+            doc.type,
+            step.from,
+            step.from,
+            "failed",
+            JSON.stringify({
+              system: doc.system,
+              flags: doc.flags,
+              ownership: doc.ownership,
+              ...(doc.img !== undefined ? { img: doc.img } : {}),
+            }),
+            Date.now(),
+          );
           db.prepare(
             "UPDATE documents SET migration_status = 'blocked' WHERE id = ?",
           ).run(doc.id);
