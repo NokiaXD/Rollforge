@@ -74,6 +74,8 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const http = createServer(app);
   const io = new SocketIOServer(http, { cors: { origin: true, credentials: true } });
 
+  // Must run before express.json: the point is to refuse oversized bodies before
+  // they are buffered.
   app.use("/api/uploads", rejectOversizedUpload);
   app.use(express.json({ limit: "12mb" }));
 
@@ -81,12 +83,12 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const authCfg = opts.auth ?? {};
   const dataDir = opts.dataDir ?? "data";
   const uploadsDir = opts.uploadsDir ?? join(dataDir, "uploads");
-  //  nosniff is the layer that survives a bug in our own sniffing: it stops the
-  //  browser from guessing a type for these bytes.
-  const staticUploads = express.static(uploadsDir, {
-    maxAge: "1h",
-    setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
-  });
+//  nosniff is the layer that survives a bug in our own sniffing: it stops the
+//  browser from guessing a type for these bytes.
+const staticUploads = express.static(uploadsDir, {
+  maxAge: "1h",
+  setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+});
 
   let worldDb: DB | null = null;
   let store: DocumentStore | null;
@@ -144,6 +146,9 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
     getDocumentsAPI: () => ({
       get: async <T extends Document = Document>(id: string) =>
         (store ? ((store.getById(id) as T | null) ?? null) : null),
+      // Extension writes must reach connected clients the same way the HTTP
+      // routes do — /compendio load goes through here, and without the emit
+      // the panel stays empty until the next full reload.
       create: async <T extends Document>(input: Omit<T, "_rev">) => {
         if (!store) throw new Error("DocumentStore unavailable");
         const doc = store.save(input as any) as any;
