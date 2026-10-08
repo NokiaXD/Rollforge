@@ -1,0 +1,8 @@
+{
+  "id": "ruler",
+  "name": "Ruler",
+  "version": "0.1.0",
+  "engines": { "core": ">=0.1.0" },
+  "activationEvents": ["onReady"],
+  "main": { "client": "src/main.client.js" }
+}

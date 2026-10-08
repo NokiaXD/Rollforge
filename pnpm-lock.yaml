@@ -139,6 +139,16 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@26.6.3)(jsdom@30.1.1)(lightningcss@1.32.0)
 
+  packages/ruler:
+    dependencies:
+      preact:
+        specifier: ^10.24.0
+        version: 10.29.8
+    devDependencies:
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@26.6.3)(jsdom@30.1.1)(lightningcss@1.32.0)
+
   packages/server:
     dependencies:
       '@dice-roller/rpg-dice-roller':
@@ -4015,6 +4025,14 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 1.2.0
 
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@20.19.43)(lightningcss@1.32.0))':
+    dependencies:
+      '@vitest/spy': 2.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@20.19.43)(lightningcss@1.32.0)
+
   '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@26.6.3)(lightningcss@1.32.0))':
     dependencies:
       '@vitest/spy': 2.1.9
@@ -5647,7 +5665,7 @@ snapshots:
   vitest@2.1.9(@types/node@20.19.43)(jsdom@30.1.1)(lightningcss@1.32.0):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@26.6.3)(lightningcss@1.32.0))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@20.19.43)(lightningcss@1.32.0))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9

@@ -64,6 +64,24 @@ export function SettingsModal() {
                 <span class="text-white">Mover token (Drag)</span>
                 <span class="text-muted">Clic izquierdo y arrastrar</span>
               </div>
+              <div class="flex items-center justify-between border-t border-white/5 pt-2">
+                <span class="text-white">Regla de medición (extensión)</span>
+                <kbd class="rounded border border-white/20 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-muted">
+                  R
+                </kbd>
+              </div>
+              <div class="flex items-center justify-between border-t border-white/5 pt-2">
+                <span class="text-white">Ajuste de la regla a la cuadrícula</span>
+                <kbd class="rounded border border-white/20 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-muted">
+                  Shift + R
+                </kbd>
+              </div>
+              <div class="flex items-center justify-between border-t border-white/5 pt-2">
+                <span class="text-white">Borrar la línea de medición</span>
+                <kbd class="rounded border border-white/20 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-muted">
+                  Esc
+                </kbd>
+              </div>
             </div>
           </section>
 

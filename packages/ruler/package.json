@@ -1,0 +1,15 @@
+{
+  "name": "@rollforge/ruler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "preact": "^10.24.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}
