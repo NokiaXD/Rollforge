@@ -146,17 +146,22 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
         (store ? ((store.getById(id) as T | null) ?? null) : null),
       create: async <T extends Document>(input: Omit<T, "_rev">) => {
         if (!store) throw new Error("DocumentStore unavailable");
-        return store.save(input as any) as any;
+        const doc = store.save(input as any) as any;
+        io.to("world").emit("documentUpdated", { type: "DocumentUpdated", document: doc });
+        return doc;
       },
       update: async <T extends Document>(id: string, patch: Partial<T>) => {
         if (!store) throw new Error("DocumentStore unavailable");
         const existing = store.getById(id);
         if (!existing) throw new Error(`Document ${id} not found`);
-        return store.update({ ...existing, ...patch } as any, existing._rev) as any;
+        const doc = store.update({ ...existing, ...patch } as any, existing._rev) as any;
+        io.to("world").emit("documentUpdated", { type: "DocumentUpdated", document: doc });
+        return doc;
       },
       delete: async (id: string) => {
         if (!store) throw new Error("DocumentStore unavailable");
         store.delete(id);
+        io.to("world").emit("documentDeleted", { type: "DocumentDeleted", id });
       },
     }),
     getDocumentStore: () => store,

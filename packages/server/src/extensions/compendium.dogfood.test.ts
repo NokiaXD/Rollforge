@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { createRollforgeServer, listen, type RollforgeServer } from "../server";
 import type { DocumentStore } from "../db/documentStore";
 
@@ -91,6 +92,40 @@ describe("compendium extension, booted from disk", () => {
     expect(store.getById("pack-demo-monsters-goblin")?.schemaVersion).toBe(2);
     expect(store.getById("pack-demo-monsters-old-troll")?.schemaVersion).toBe(1);
     expect(store.getById("pack-demo-monsters-legendary-mimic")?.schemaVersion).toBe(0);
+  });
+
+  it("load broadcasts every created pack entry (no page refresh needed)", async () => {
+    const sub: ClientSocket = ioClient(`http://127.0.0.1:${port}`, {
+      path: "/socket.io",
+      transports: ["websocket"],
+      forceNew: true,
+    });
+    // "you" is emitted right after socket.join("world"), so waiting for it
+    // removes the race between the client's connect and the room join.
+    await new Promise<void>((resolve, reject) => {
+      sub.once("connect_error", (e) => reject(e));
+      sub.once("you", () => resolve());
+      setTimeout(() => reject(new Error("connect timeout")), 3000);
+    });
+
+    const ids: string[] = [];
+    const allNine = new Promise<void>((resolve) => {
+      sub.on("documentUpdated", (payload: { document: { id: string } }) => {
+        ids.push(payload.document.id);
+        if (ids.length >= 9) resolve();
+      });
+    });
+
+    await runCommand("load demo-monsters");
+    await Promise.race([
+      allNine,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`only saw ${ids.length}/9 updates`)), 3000),
+      ),
+    ]);
+    expect(ids).toContain("pack-demo-monsters-goblin");
+    expect(new Set(ids).size).toBe(9);
+    sub.disconnect();
   });
 
   it("load is idempotent", async () => {
