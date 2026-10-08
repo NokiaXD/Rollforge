@@ -110,6 +110,28 @@ it("moveToken persists new position and bumps _rev", () => {
     expect(doc?._rev).toBe(1);
   });
 
+  // Not "did the field I touched get saved" — that passes either way. This asserts
+  // that a field toDoc does NOT know about is not silently erased by an unrelated
+  // mutation. toDoc rebuilds the whole doc, so this is the actual bug shape.
+  it("an unrelated MoveToken does not erase a token img", () => {
+    const db = openDb();
+    const store = new DocumentStore(db);
+    const seeded = new SceneState({ store });
+    seeded.createToken("tok-img", "scene-1", 0, 0);
+    const doc = store.getById("tok-img")!;
+    doc.img = "/uploads/abc123.png";
+    store.update(doc, doc._rev);
+
+    const state = new SceneState({ store });
+    expect(state.getToken("tok-img")?.img).toBe("/uploads/abc123.png");
+
+    const rev = state.getToken("tok-img")!._rev;
+    expect(state.moveToken("tok-img", "user-1", 5, 5, rev)).not.toBeNull();
+
+    expect(state.getToken("tok-img")?.img).toBe("/uploads/abc123.png");
+    expect(store.getById("tok-img")?.img).toBe("/uploads/abc123.png");
+  });
+
   it("rejects moveToken on stale _rev or when locked by another user", () => {
     const db = openDb();
     const store = new DocumentStore(db);

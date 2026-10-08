@@ -22,6 +22,12 @@ export interface TokenRecord {
   _rev: number;
   /** userId of the player who owns this token; undefined = GM-only */
   ownerId?: string;
+  /**
+   *  The token's own image. Deliberately standalone: there is no Token→Actor link
+   *  yet, so there is nothing to inherit from. Adding `actorId` later is a design
+   *  decision, not a side effect of this field.
+   */
+  img?: string;
 }
 
 export interface DragLock {
@@ -47,6 +53,8 @@ function defaultSceneSystem(): SceneSystem {
     height: 25000,
     background: null,
     grid: { size: 50, color: 0x2c313a, type: "square" },
+    cellLength: 5,
+    units: "ft",
   };
 }
 
@@ -99,6 +107,7 @@ export class SceneState {
         h: doc.system.h,
         ownership: doc.ownership,
         _rev: doc._rev,
+        ...(doc.img !== undefined ? { img: doc.img } : {}),
       });
     }
     for (const doc of this.store.getByType<SceneSystem>("Scene")) {
@@ -369,8 +378,11 @@ export class SceneState {
     }
   }
 
+  //  Reconstructs the whole doc on every write, so any Document field not listed
+  //  here is silently erased by the next MoveToken. `img` is carried explicitly
+  //  for that reason — see the "unrelated mutation preserves untouched fields" test.
   private toDoc(token: TokenRecord): Document<TokenSystem> {
-    return {
+    const doc: Document<TokenSystem> = {
       id: token.id,
       type: "Token",
       name: token.id,
@@ -387,6 +399,8 @@ export class SceneState {
       migrationStatus: "ok",
       _rev: token._rev,
     };
+    if (token.img) doc.img = token.img;
+    return doc;
   }
 
   private expireLocks(): void {
