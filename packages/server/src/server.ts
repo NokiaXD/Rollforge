@@ -12,7 +12,7 @@ import { SessionsStore, SESSION_COOKIE, resolveSession } from "./auth/sessions";
 import { LoginRateLimiter } from "./auth/rateLimit";
 import { authMiddleware, parseCookies } from "./auth/middleware";
 import { createAuthRouter } from "./auth/routes";
-import { createUploadsRouter } from "./uploads";
+import { createUploadsRouter, rejectOversizedUpload } from "./uploads";
 import { createDocumentRouter } from "./db/documentRoutes";
 import { createDocumentTypesRouter } from "./db/documentTypesRoute";
 import { createExtensionSourcesRouter } from "./db/extensionSourcesRouter";
@@ -41,6 +41,13 @@ export interface RollforgeServerOpts {
   users?: UsersStore | null;
   auth?: AuthOpts | null;
   dataDir?: string;
+  /**
+   *  Where uploaded images land. Defaults to `<dataDir>/uploads` (process-global).
+   *  main.ts passes `<dataDir>/worlds/<id>/assets` so a campaign's images travel
+   *  with its .db. URLs are `/uploads/<hash>.<ext>` either way, so no document has
+   *  to be rewritten when this moves.
+   */
+  uploadsDir?: string;
   registerBuiltins?: boolean;
   extensionsDir?: string;
   activationTimeoutMs?: number;
@@ -67,12 +74,19 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
   const http = createServer(app);
   const io = new SocketIOServer(http, { cors: { origin: true, credentials: true } });
 
+  app.use("/api/uploads", rejectOversizedUpload);
   app.use(express.json({ limit: "12mb" }));
 
   const authEnabled = opts.auth !== null;
   const authCfg = opts.auth ?? {};
   const dataDir = opts.dataDir ?? "data";
-  const uploadsDir = join(dataDir, "uploads");
+  const uploadsDir = opts.uploadsDir ?? join(dataDir, "uploads");
+  //  nosniff is the layer that survives a bug in our own sniffing: it stops the
+  //  browser from guessing a type for these bytes.
+  const staticUploads = express.static(uploadsDir, {
+    maxAge: "1h",
+    setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+  });
 
   let worldDb: DB | null = null;
   let store: DocumentStore | null;
@@ -305,7 +319,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
       }),
     );
 
-    app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
+    app.use("/uploads", staticUploads);
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
     app.use("/api/documents", createDocumentRouter({ store, io, extensionManager: extensions }));
     app.use("/api/document-types", createDocumentTypesRouter({ extensionManager: extensions }));
@@ -335,7 +349,7 @@ export function createRollforgeServer(opts: RollforgeServerOpts = {}): Rollforge
       ...authCfg.sync,
     });
   } else {
-    app.use("/uploads", express.static(uploadsDir, { maxAge: "1h" }));
+    app.use("/uploads", staticUploads);
     app.use("/api/uploads", createUploadsRouter({ dir: uploadsDir }));
     app.use("/api/documents", createDocumentRouter({ store, io, extensionManager: extensions }));
     app.use("/api/document-types", createDocumentTypesRouter({ extensionManager: extensions }));

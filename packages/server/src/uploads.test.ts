@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { request as httpRequest } from "node:http";
+import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
 import { createRollforgeServer, listen, type RollforgeServer } from "./server";
 
 interface HttpResp {
@@ -10,6 +10,7 @@ interface HttpResp {
   body: string;
   raw?: Buffer;
   setCookie?: string | undefined;
+  headers?: IncomingHttpHeaders;
 }
 
 function request(
@@ -34,7 +35,13 @@ function request(
         const buf = Buffer.concat(chunks);
         const rawSetCookie = res.headers["set-cookie"];
         const setCookie = Array.isArray(rawSetCookie) ? rawSetCookie.join(",") : rawSetCookie;
-        resolve({ status: res.statusCode ?? 0, body: buf.toString("utf8"), raw: buf, setCookie });
+        resolve({
+          status: res.statusCode ?? 0,
+          body: buf.toString("utf8"),
+          raw: buf,
+          setCookie,
+          headers: res.headers,
+        });
       });
     });
     req.on("error", reject);
@@ -133,5 +140,64 @@ describe("uploads HTTP integration", () => {
     }, gmCookie);
     expect(r.status).toBe(400);
     expect(JSON.parse(r.body).error).toBe("unsupported-type");
+  });
+
+  // The declared MIME is client-controlled, so bytes decide. A mismatch must be a
+  // 400, never a silent re-label into a served image.
+  it("rejects bytes that do not match the declared type", async () => {
+    const html = Buffer.from("<html><script>alert(1)</script></html>").toString("base64");
+    const r = await request(port, "POST", "/api/uploads", {
+      data: `data:image/png;base64,${html}`,
+      name: "evil.png",
+    }, gmCookie);
+    expect(r.status).toBe(400);
+    expect(JSON.parse(r.body).error).toBe("content-mismatch");
+  });
+
+  it("rejects a PNG body declared as jpg", async () => {
+    const r = await request(port, "POST", "/api/uploads", {
+      data: `data:image/jpg;base64,${TINY_PNG_B64}`,
+      name: "x.jpg",
+    }, gmCookie);
+    expect(r.status).toBe(400);
+    expect(JSON.parse(r.body).error).toBe("content-mismatch");
+  });
+
+  it("writes into an explicit per-world uploads dir", async () => {
+    const worldAssets = join(dataDir, "worlds", "w1", "assets");
+    await server.close();
+    server = createRollforgeServer({ dataDir, uploadsDir: worldAssets, auth: { cookieSecure: false } });
+    port = await listen(server, 0);
+
+    const r = await request(port, "POST", "/api/uploads", {
+      data: `data:image/png;base64,${TINY_PNG_B64}`,
+      name: "map.png",
+    }, gmCookie);
+    expect(r.status).toBe(200);
+    const { url } = JSON.parse(r.body) as { url: string };
+    expect(existsSync(join(worldAssets, url.replace(/^\/uploads\//, "")))).toBe(true);
+    // Nothing landed in the process-global dir (the first server in beforeEach
+    // already created it, so assert the file is absent, not the dir).
+    expect(
+      existsSync(join(dataDir, "uploads", url.replace(/^\/uploads\//, ""))),
+    ).toBe(false);
+  });
+
+  it("serves stored images with nosniff", async () => {
+    const r = await request(port, "POST", "/api/uploads", {
+      data: `data:image/png;base64,${TINY_PNG_B64}`,
+      name: "map.png",
+    }, gmCookie);
+    const { url } = JSON.parse(r.body) as { url: string };
+    const fetched = await request(port, "GET", url, undefined, undefined, true);
+    expect(fetched.headers?.["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("rejects an oversized body on Content-Length before buffering it", async () => {
+    // 20MB of junk: the guard must answer 413 without the JSON parser ever running.
+    const big = "A".repeat(20 * 1024 * 1024);
+    const r = await request(port, "POST", "/api/uploads", { data: big, name: "big.png" }, gmCookie);
+    expect(r.status).toBe(413);
+    expect(JSON.parse(r.body).error).toBe("too-large");
   });
 });

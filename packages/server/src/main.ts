@@ -4,6 +4,7 @@ import { DocumentStore } from "./db/documentStore";
 import { ChatStore } from "./db/chatStore";
 import { ensureWorldDir } from "./db/worlds";
 import { VERSION } from "./version";
+import { dirname, join } from "node:path";
 
 const DATA_DIR = process.env.ROLLFORGE_DATA ?? "data";
 const WORLD_ID = process.env.ROLLFORGE_WORLD ?? "default";
@@ -17,6 +18,8 @@ const chatStore = new ChatStore(db);
 
 const server = createRollforgeServer({
   dataDir: DATA_DIR,
+  //  images live next to the .db, so a campaign is one folder to copy or back up.
+  uploadsDir: join(dirname(DB_PATH), "assets"),
   store,
   chatStore,
 });
