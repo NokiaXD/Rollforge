@@ -33,6 +33,12 @@ export async function createPixi(host: HTMLElement): Promise<PixiCtx> {
   });
   app.stage.addChild(viewport);
 
+  //  Needed for a pointerdown over empty space to reach the viewport at all —
+  //  token drags already had to ask for it (canvas/tokens.ts sets it on
+  //  pointerdown), and client extensions doing the same cannot set it before
+  //  the press happens.
+  viewport.eventMode = "static";
+
   // wheel = zoom centered on cursor; right-mouse / middle = pan. Default Pixi-viewport presets.
   viewport.drag({ mouseButtons: "right-middle" }).wheel({ smooth: 6 }).clampZoom({ minScale: 0.1, maxScale: 3 });
 

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { DocumentUpdateRejection } from "@rollforge/extension-api";
 import { httpPatchDocument } from "./documentTransport";
-import { waitForApi } from "./bootstrap";
+import { bootstrapClient, waitForApi } from "./bootstrap";
+import { setAuthenticated, setAnon } from "../state/auth";
 
 interface FakeResponseInit {
   status: number;
@@ -165,5 +166,44 @@ describe("httpPatchDocument translation table", () => {
     const result = await httpPatchDocument("doc-1", {}, fetchImpl);
     expect(result.ok).toBe(true);
     expect(result.body).toBeUndefined();
+  });
+});
+
+describe("bootstrapClient", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAnon();
+  });
+
+  it("defers extension loading until the session is authenticated", async () => {
+    const urls: string[] = [];
+    let authed = false;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url === "/api/auth/me") {
+        return (
+          authed
+            ? { status: 200, ok: true, json: async () => ({ username: "gm", role: "GM" }) }
+            : { status: 401, ok: false, json: async () => ({ error: "unauthorized" }) }
+        ) as Response;
+      }
+      if (!authed) return { status: 401, ok: false, json: async () => ({ error: "unauthorized" }) } as Response;
+      if (url === "/api/document-types") return { status: 200, ok: true, json: async () => ({ types: [] }) } as Response;
+      if (url === "/api/extension-sources") return { status: 200, ok: true, json: async () => ({ sources: [] }) } as Response;
+      return { status: 404, ok: false, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchImpl);
+
+    await bootstrapClient();
+    // anon: both endpoints are behind requireAuth, so nothing was even asked
+    expect(urls).not.toContain("/api/document-types");
+    expect(urls).not.toContain("/api/extension-sources");
+
+    // the login form flips authStatus → the watcher runs the deferred load
+    authed = true;
+    setAuthenticated({ username: "gm", role: "GM" });
+    await vi.waitFor(() => expect(urls).toContain("/api/extension-sources"));
+    expect(urls).toContain("/api/document-types");
   });
 });

@@ -1,17 +1,22 @@
-import { h } from "preact";
-import { useRef, useState } from "preact/hooks";
-
 //  Served RAW at /api/extension-sources/:id.js, so this file can only use
-//  bare specifiers the client's import map resolves: preact, preact/hooks and
-//  @rollforge/*. No relative imports (a `import "./pack.js"` would 404), which
-//  is why PACK_TYPE and IMPORT_TYPE are repeated here instead of shared with
-//  src/pack.js. One comment, one duplication — not a module system.
+//  what the host hands it: no relative imports (an `import "./pack.js"` would
+//  404), which is why PACK_TYPE and IMPORT_TYPE are repeated here instead of
+//  shared with src/pack.js. One comment, one duplication — not a module system.
+//
+//  No `import "preact"` either: index.html's import map resolves it to the
+//  unversioned optimizer url while the app imports the same dep as `?v=<hash>`,
+//  so the extension would get a second preact whose hooks never render (every
+//  useState throws "__H of undefined"). api.ui.preact is the host's preact.
 //
 //  No createBoundInput either: @rollforge/extension-api/client/binding is not
 //  in the import map, and extending the map for a demo field is not worth it.
 
 const PACK_TYPE = "compendium-actor";
 const IMPORT_TYPE = "compendium-monster";
+
+//  Assigned by activate() below. They are only read while a component renders,
+//  which cannot happen before the panel is registered.
+let h, useRef, useState;
 
 function NumberField(props) {
   const { api, documentId, path, value } = props;
@@ -193,6 +198,7 @@ function CompendiumPanel({ entries }) {
 }
 
 export default function activate(api) {
+  ({ h, useRef, useState } = api.ui.preact);
   api.ui.registerSheet({
     documentType: IMPORT_TYPE,
     component: (props) => h(MonsterSheet, { ...props, api }),
@@ -201,7 +207,7 @@ export default function activate(api) {
   api.ui.registerPanel({
     id: "compendium",
     title: "Compendio",
-    icon: "\ue5d3",
+    icon: "nf-cod-book",
     component: CompendiumPanel,
     // The host prefetches these and hands them over as `entries`, so this
     // component never fetches anything itself.

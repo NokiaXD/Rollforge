@@ -4,11 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RollForge</title>
+    <!-- No "preact" here on purpose: the optimizer hands the app
+         preact.js?v=<hash> while the map would hand out preact.js, i.e. TWO
+         instances whose hooks never meet. Extensions use api.ui.preact. -->
     <script type="importmap">
     {
       "imports": {
-        "preact": "/node_modules/.vite/deps/preact.js",
-        "preact/hooks": "/node_modules/.vite/deps/preact_hooks.js",
         "@rollforge/extension-api": "/node_modules/.vite/deps/@rollforge_extension-api.js",
         "@rollforge/protocol": "/node_modules/.vite/deps/@rollforge_protocol.js"
       }

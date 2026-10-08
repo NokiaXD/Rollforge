@@ -27,6 +27,7 @@ import { ContextMenu } from "./ContextMenu";
 import { SheetModal } from "./SheetModal";
 import "../extensions/bootstrap";
 import { createPixi } from "../canvas/pixiApp";
+import { setViewport } from "../canvas/currentViewport";
 import { drawGrid } from "../canvas/grid";
 import { drawBackground, type BackgroundHandle } from "../canvas/background";
 import { SceneRenderer } from "../canvas/sceneRenderer";
@@ -116,6 +117,10 @@ export function App() {
 
       const renderer = new SceneRenderer(ctx.viewport, sendIntent);
       disposers.push(() => renderer.destroy());
+      //  Publishes the viewport to the extension host (canvas/currentViewport.ts).
+      //  Cleared in cleanup so extensions don't read a destroyed Pixi instance.
+      setViewport(ctx.viewport);
+      disposers.push(() => setViewport(null));
       connectSocket();
 
       //  native contextmenu fires after a non-drag right-click; the browser

@@ -1,14 +1,20 @@
-import { DocumentUpdateRejection, freezeClientAPI, type ClientExtensionAPI, type ClientPanelRegistration } from "@rollforge/extension-api";
+import { DocumentUpdateRejection, freezeClientAPI, type ClientExtensionAPI, type ClientPanelRegistration, type ClientViewportLike } from "@rollforge/extension-api";
 import { effect } from "@preact/signals";
+import { h } from "preact";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { Container, Graphics, Text } from "pixi.js";
+import type { Viewport } from "pixi-viewport";
 import type { Document } from "@rollforge/protocol";
 import { registerSheet, setOwnerMap } from "./clientSheets";
 import { registerPanel } from "./clientPanels";
 import { CustomActorSheet } from "./builtins/customActorSheet";
 import { documents, listDocumentsByType, upsertDocument } from "../state/documents";
-import { myUserId, currentSceneId } from "../state/scene";
+import { myUserId, currentSceneId, cellSize, tokens } from "../state/scene";
+import { viewedScene } from "../state/scenes";
+import { getViewport, onViewportReady } from "../canvas/currentViewport";
 import { httpPatchDocument } from "./documentTransport";
 import { fetchDocumentTypes } from "../state/extensionSources";
-import { fetchMe } from "../state/auth";
+import { fetchMe, authStatus } from "../state/auth";
 import { loadClientExtensions } from "./extensionLoader";
 
 //  the client-side "extension host" seed. Builds the frozen ClientExtensionAPI
@@ -83,10 +89,43 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
         // console fallback; the real toast system lives elsewhere.
         console.info("[extension-api]", msg);
       },
+      //  The host's preact, so a raw-served extension file never has to import
+      //  it (see ClientPreactAPI: the import map gives it a second instance).
+      preact: { h, useState, useRef, useEffect, useMemo, useCallback },
     },
     context: {
       userId: myUserId.value ?? "",
       sceneId: currentSceneId.value,
+    },
+    //  Paso 24: the drawing surface. A getter, because extensions activate
+    //  before ui/App.tsx creates Pixi — a captured value would be forever null.
+    //  deepFreeze skips accessors, so the Viewport is never frozen.
+    canvas: {
+      get viewport() {
+        return getViewport() as ClientViewportLike | null;
+      },
+      //  The classes are handed over, not imported by the extension: a raw-served
+      //  client file can only resolve what index.html's import map covers, and
+      //  that map only exists under the Vite dev server.
+      pixi: { Container, Graphics, Text },
+      onReady: (cb) => {
+        onViewportReady(cb as (vp: Viewport) => void);
+      },
+    },
+    scene: {
+      cellSize: () => cellSize.value,
+      //  SceneSystem keeps these optional (base type, no migration chain), so
+      //  the fallback lives here — the single read point.
+      cellLength: () => viewedScene.value?.system.cellLength ?? 5,
+      units: () => viewedScene.value?.system.units ?? "ft",
+      tokens: () =>
+        [...tokens.value.values()].map((t) => ({
+          id: t.id,
+          x: t.x,
+          y: t.y,
+          w: t.w,
+          h: t.h,
+        })),
     },
   };
   return freezeClientAPI(api);
@@ -131,14 +170,31 @@ export async function waitForApi(
   return false;
 }
 
+let extensionHost: Promise<void> | null = null;
+
+function loadExtensionHost(): Promise<void> {
+  extensionHost ??= (async () => {
+    const types = await fetchDocumentTypes();
+    const map: Record<string, string | undefined> = {};
+    for (const t of types) map[t.id] = t.extensionId;
+    setOwnerMap(map);
+    await loadClientExtensions((id) => buildClientAPI(id));
+  })();
+  return extensionHost;
+}
+
 export async function bootstrapClient(): Promise<void> {
   await waitForApi();
   await fetchMe();
-  const types = await fetchDocumentTypes();
-  const map: Record<string, string | undefined> = {};
-  for (const t of types) map[t.id] = t.extensionId;
-  setOwnerMap(map);
-  await loadClientExtensions((id) => buildClientAPI(id));
+  // /api/document-types and /api/extension-sources are behind requireAuth, so
+  // a client that boots anon gets 401s and registers no extension ever — not
+  // until a page reload with the new cookie. Watch authStatus instead: the
+  // effect runs immediately when the session cookie already authenticated us,
+  // and again the moment the login form flips the status.
+  effect(() => {
+    if (authStatus.value === "authenticated") void loadExtensionHost();
+  });
+  if (authStatus.value === "authenticated") await loadExtensionHost();
 }
 
 export { api };

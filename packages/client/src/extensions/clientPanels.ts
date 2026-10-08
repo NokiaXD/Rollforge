@@ -1,3 +1,4 @@
+import { signal } from "@preact/signals";
 import type { Document } from "@rollforge/protocol";
 import type { ClientExtensionAPI, ClientPanelRegistration } from "@rollforge/extension-api";
 import { fetchDocuments, listDocumentsByType } from "../state/documents";
@@ -21,7 +22,10 @@ export interface ClientPanelEntry {
   extensionId: string;
 }
 
-const panels: ClientPanelEntry[] = [];
+//  A signal, not a plain array: client extensions register *after* first
+//  paint whenever the boot was anon (the sources endpoint 401s until login),
+//  so the ActivityBar and Sidebar have to re-render when a panel lands.
+const panels = signal<readonly ClientPanelEntry[]>([]);
 
 //  Sidebar mounts a core view and an extension panel by matching the same
 //  `tab` id, so a panel that shadows a core tab would render stacked on top
@@ -39,18 +43,18 @@ export function registerPanel(
     );
     return;
   }
-  const existingIdx = panels.findIndex((p) => p.panel.id === entry.panel.id);
+  const existingIdx = panels.value.findIndex((p) => p.panel.id === entry.panel.id);
   if (existingIdx >= 0) {
     // Last registration wins for the same id. Unlike sheets there is no
     // ownership to reconcile: a panel id is a tab, and re-registering the
     // same tab is what an HMR reload does. Log it rather than throwing —
     // a client-side hiccup must not take down the app shell.
     onError?.(
-      `[panels] panel id "${entry.panel.id}" was already registered by "${panels[existingIdx]!.extensionId}"; replacing it with "${entry.extensionId}"`,
+      `[panels] panel id "${entry.panel.id}" was already registered by "${panels.value[existingIdx]!.extensionId}"; replacing it with "${entry.extensionId}"`,
     );
-    panels[existingIdx] = entry;
+    panels.value = panels.value.map((p, i) => (i === existingIdx ? entry : p));
   } else {
-    panels.push(entry);
+    panels.value = [...panels.value, entry];
   }
   for (const type of entry.panel.documentTypes ?? []) {
     //  Fire-and-forget prefetch, deliberately swallowing the failure: this
@@ -63,11 +67,11 @@ export function registerPanel(
 }
 
 export function panelFor(id: string): ClientPanelEntry | undefined {
-  return panels.find((p) => p.panel.id === id);
+  return panels.value.find((p) => p.panel.id === id);
 }
 
 export function listPanels(): readonly ClientPanelEntry[] {
-  return panels;
+  return panels.value;
 }
 
 //  Documents for the panel's declared types, flattened. Reads the
@@ -81,11 +85,9 @@ export function panelEntries(panel: ClientPanelRegistration): readonly Document[
 }
 
 export function clearPanelsFor(extensionId: string): void {
-  for (let i = panels.length - 1; i >= 0; i--) {
-    if (panels[i]!.extensionId === extensionId) panels.splice(i, 1);
-  }
+  panels.value = panels.value.filter((p) => p.extensionId !== extensionId);
 }
 
 export function clearPanels(): void {
-  panels.length = 0;
+  panels.value = [];
 }
