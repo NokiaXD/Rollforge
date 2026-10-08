@@ -1,5 +1,6 @@
 import { signal, effect } from "@preact/signals";
 import type { Document } from "@rollforge/protocol";
+import { documentTypes } from "./extensionSources";
 
 export const documents = signal<Map<string, Document>>(new Map());
 
@@ -21,6 +22,17 @@ export function getDocument<T extends Document = Document>(id: string): T | null
 
 export function listDocumentsByType(type: string): Document[] {
   return [...documents.value.values()].filter((d) => d.type === type);
+}
+
+//  document types the Actores view should list: the built-in "Actor" plus
+// every extension-contributed type with base Actor and campaign scope.
+// scope:"compendium" types are pack wrappers (read-only pack entries), not
+// actors — an imported monster is a compendium-monster, a pack entry is not.
+export function actorTypes(): string[] {
+  const contributed = documentTypes.value
+    .filter((t) => t.base === "Actor" && t.scope !== "compendium")
+    .map((t) => t.id);
+  return [...new Set(["Actor", ...contributed])];
 }
 
 //  tiny path getter/setter; client-side mirror of server's setInPath.

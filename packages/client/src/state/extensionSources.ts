@@ -11,6 +11,9 @@ export interface DocumentTypeEntry {
   extensionId: string;
   base: "Actor" | "Item" | "Scene";
   schemaVersion: number;
+  // The server always reports it (documentTypesRoute.ts), defaulting omitted
+  // manifest scopes to "campaign". Optional here only for test fixtures.
+  scope?: "campaign" | "compendium";
 }
 
 export const documentTypes = signal<readonly DocumentTypeEntry[]>([]);

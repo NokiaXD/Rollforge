@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  actorTypes,
   documents,
   upsertDocument,
   removeDocument,
@@ -9,6 +10,7 @@ import {
   listDocumentsByType,
   subscribeDocument,
 } from "./documents";
+import { documentTypes } from "./extensionSources";
 import type { Document } from "@rollforge/protocol";
 
 const actorDoc = (id: string, overrides: Partial<{ hp: { value: number; max: number }; notes: string }> = {}): Document => ({
@@ -56,6 +58,25 @@ describe("documents state", () => {
     unsub();
     // No assertion on `seen` length — just that the API surface exists.
     expect(Array.isArray(seen)).toBe(true);
+  });
+});
+
+describe("actorTypes", () => {
+  it("Actor + extension base-Actor campaign types; compendium wrappers excluded", () => {
+    documentTypes.value = [];
+    expect(actorTypes()).toEqual(["Actor"]);
+
+    documentTypes.value = [
+      { id: "compendium-monster", extensionId: "compendium", base: "Actor", schemaVersion: 2, scope: "campaign" },
+      { id: "compendium-actor", extensionId: "compendium", base: "Actor", schemaVersion: 2, scope: "compendium" },
+      { id: "example-item", extensionId: "example", base: "Item", schemaVersion: 1, scope: "campaign" },
+    ];
+    expect(actorTypes()).toEqual(["Actor", "compendium-monster"]);
+  });
+
+  it("dedupes a contributed type literally named Actor", () => {
+    documentTypes.value = [{ id: "Actor", extensionId: "x", base: "Actor", schemaVersion: 1 }];
+    expect(actorTypes()).toEqual(["Actor"]);
   });
 });
 

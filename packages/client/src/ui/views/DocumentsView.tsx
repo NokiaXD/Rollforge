@@ -1,6 +1,13 @@
 import { useEffect } from "preact/hooks";
 import type { Document } from "@rollforge/protocol";
-import { deleteDocument, documents, fetchDocuments, listDocumentsByType, patchDocument } from "../../state/documents";
+import {
+  actorTypes,
+  deleteDocument,
+  documents,
+  fetchDocuments,
+  listDocumentsByType,
+  patchDocument,
+} from "../../state/documents";
 import { openContextMenu, openDocument, type ContextMenuItem } from "../../state/ui";
 import { currentUser } from "../../state/auth";
 
@@ -9,11 +16,15 @@ const DEFAULT_ACTOR_OWNERSHIP = {
 };
 
 export function DocumentsView() {
+  const types = actorTypes();
+  //  identity of `types` as a primitive so the effect re-runs when the
+  // document-type registry arrives after mount (it is fetched at bootstrap).
+  const typeKey = types.join("|");
   useEffect(() => {
-    void fetchDocuments("Actor");
-  }, []);
+    for (const t of types) void fetchDocuments(t);
+  }, [typeKey]);
 
-  const actors = listDocumentsByType("Actor");
+  const actors = types.flatMap(listDocumentsByType);
   const isGM = currentUser.value?.role === "GM";
 
   const handleCreate = async () => {
