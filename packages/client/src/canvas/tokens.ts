@@ -1,18 +1,22 @@
-import { Container, Graphics, Text, FederatedPointerEvent } from "pixi.js";
+import { Container, Graphics, FederatedPointerEvent } from "pixi.js";
 import type { Viewport } from "pixi-viewport";
 import { effect } from "@preact/signals";
 import type { Intent } from "@rollforge/protocol";
 import type { Token } from "../state/scene";
 import { cellSize, focusedTokenId, locks, myUserId } from "../state/scene";
+import { identiconCells, tokenSeed, type IdenticonCells } from "./identicon";
 
 const THROTTLE_MS = 50; // ~20Hz cap; client-side throttle per plan Paso 4.
 
+//  The identicon owns the token's interior, so lock state lives on the border —
+//  before, the fill was the only lock signal and a background image would have
+//  silently erased it. Unlocked + unfocused = no border at all.
 const COLORS = {
-  free: 0x4f8cff,
   own: 0xff9f43,
   lockedOther: 0x9b59b6,
   stroke: 0xffffff,
   focus: 0xffeb3b,
+  empty: 0x1c212a,
 };
 
 // snap position to nearest grid cell. Offset by half-cell so a 1x1 token center sits on a cell center, not a corner.
@@ -33,8 +37,9 @@ export interface TokenSpriteOptions {
 export class TokenSprite {
   readonly container: Container;
   private gfx: Graphics;
-  private label: Text;
   private token: Token;
+  /** parsed once: minidenticons is a pure seed -> SVG function, so this never changes. */
+  private readonly identicon: IdenticonCells;
   private dragging = false;
   private pendingDrag = false;
   private lastSent = 0;
@@ -64,15 +69,10 @@ export class TokenSprite {
     this.container.cursor = "pointer";
     this.container.position.set(opts.token.x, opts.token.y);
 
+    this.identicon = identiconCells(tokenSeed(opts.token.id));
+
     this.gfx = new Graphics();
     this.container.addChild(this.gfx);
-
-    this.label = new Text({
-      text: opts.token.id.slice(-3).toUpperCase(),
-      style: { fill: 0xffffff, fontSize: 14, fontFamily: "system-ui" },
-    });
-    this.label.anchor.set(0.5);
-    this.container.addChild(this.label);
 
     this.draw();
 
@@ -164,17 +164,37 @@ export class TokenSprite {
     const lockOwner = locks.value.get(this.token.id);
     const me = myUserId.value;
     const focused = focusedTokenId.value === this.token.id;
-    let fill = COLORS.free;
-    if (lockOwner) fill = lockOwner === me ? COLORS.own : COLORS.lockedOther;
+    //  No border unless something has to say: an unlocused, unlocked token draws
+    //  nothing. The identicon is the token; a permanent ring just boxes it in.
+    const border = lockOwner
+      ? lockOwner === me
+        ? COLORS.own
+        : COLORS.lockedOther
+      : focused
+        ? COLORS.focus
+        : null;
     const cell = cellSize.value;
     const w = this.token.w * cell;
     const h = this.token.h * cell;
     this.gfx.clear();
-    this.gfx
-      .roundRect(-w / 2, -h / 2, w, h, 6)
-      .fill({ color: fill })
-      .stroke({ color: focused ? COLORS.focus : COLORS.stroke, width: focused ? 4 : 2 });
-    this.label.position.set(0, 0);
+    this.gfx.roundRect(-w / 2, -h / 2, w, h, 6).fill({ color: COLORS.empty });
+    if (border !== null) {
+      this.gfx.stroke({ color: border, width: focused ? 4 : 2 });
+    }
+
+    // 5x5 identicon inset by 2px so it never sits under the border. Drawn as plain
+    // rects: same sync Graphics path the roundRect already used, so a token needs no
+    // texture load and there is no blank frame between "token created" and "visible".
+    const pad = 2;
+    const gw = w - pad * 2;
+    const gh = h - pad * 2;
+    if (gw <= 0 || gh <= 0) return;
+    const cw = gw / 5;
+    const ch = gh / 5;
+    const fill = `hsl(${this.identicon.hue} 95% 45%)`;
+    for (const [cx, cy] of this.identicon.cells) {
+      this.gfx.rect(-gw / 2 + cx * cw, -gh / 2 + cy * ch, cw, ch).fill(fill);
+    }
   }
 
   private onPointerTap = () => {
