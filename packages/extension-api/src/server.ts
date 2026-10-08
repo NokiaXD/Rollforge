@@ -132,6 +132,14 @@ export function deepFreeze<T>(obj: T, seen = new Set<unknown>()): T {
 
   const propNames = Object.getOwnPropertyNames(obj);
   for (const name of propNames) {
+    //  Accessors are skipped on purpose. Reading one would RUN it, and the
+    //  result would then be frozen — for `api.canvas.viewport` that meant
+    //  freezing Pixi's whole reachable object graph (breaking the renderer, not
+    //  protecting anything). Skipping does not open an assignment path: the
+    //  getter is an accessor with no setter, so writes already threw under the
+    //  strict mode ESM always runs in.
+    const desc = Object.getOwnPropertyDescriptor(obj, name);
+    if (desc?.get) continue;
     const val = (obj as any)[name];
     if (val && typeof val === "object" && !Object.isFrozen(val)) {
       deepFreeze(val, seen);

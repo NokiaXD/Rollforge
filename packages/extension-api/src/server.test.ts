@@ -29,6 +29,30 @@ describe("server API freeze", () => {
       (frozen.chat as any).send = async () => {};
     }).toThrow();
   });
+
+  //  Paso 24 — api.canvas.viewport is an accessor. Reading it during the walk
+  //  used to invoke the getter and freeze whatever it returned, which for Pixi
+  //  meant freezing the renderer's whole object graph.
+  it("skips accessor properties: never invokes the getter, and stays read-only", () => {
+    const get = vi.fn(() => ({ engine: { internal: { deep: true } } }));
+    const api = { canvas: { get viewport() { return get(); } } };
+
+    const frozen = deepFreeze(api);
+
+    expect(get).not.toHaveBeenCalled();
+    expect(Object.isFrozen(frozen)).toBe(true);
+    expect(Object.isFrozen(frozen.canvas)).toBe(true);
+    //  reading is still allowed, and the value is live — the closure decides it
+    const live = frozen.canvas.viewport;
+    expect(live.engine.internal.deep).toBe(true);
+    expect(get).toHaveBeenCalledTimes(1);
+    //  ...but the returned value was never frozen, and assignment throws
+    //  because the accessor has no setter (strict mode, as ESM always is).
+    expect(Object.isFrozen(live.engine.internal)).toBe(false);
+    expect(() => {
+      (frozen.canvas as any).viewport = null;
+    }).toThrow(TypeError);
+  });
 });
 
 describe("HooksEngine", () => {

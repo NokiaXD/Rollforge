@@ -25,6 +25,17 @@ function makeApi(): ClientExtensionAPI {
     },
     ui,
     context: { userId: "u1", sceneId: null },
+    canvas: {
+      viewport: null,
+      pixi: { Container: class {}, Graphics: class {}, Text: class {} },
+      onReady: () => {},
+    },
+    scene: {
+      cellSize: () => 50,
+      cellLength: () => 5,
+      units: () => "ft",
+      tokens: () => [],
+    },
   };
 }
 
@@ -50,9 +61,52 @@ describe("freezeClientAPI", () => {
     }).toThrow();
   });
 
-  it("exposes exactly the four top-level keys", () => {
+  it("exposes exactly the six top-level keys", () => {
     const frozen = freezeClientAPI(makeApi());
-    expect(Object.keys(frozen).sort()).toEqual(["context", "documents", "hooks", "ui"]);
+    //  `canvas` + `scene` added in Paso 24 (the `ruler` extension). §13 covers
+    //  the shape of `api` under semver, so the contract is asserted here.
+    expect(Object.keys(frozen).sort()).toEqual([
+      "canvas",
+      "context",
+      "documents",
+      "hooks",
+      "scene",
+      "ui",
+    ]);
+  });
+
+  it("canvas surface exposes exactly { onReady, pixi, viewport }", () => {
+    const frozen = freezeClientAPI(makeApi());
+    expect(Object.keys(frozen.canvas).sort()).toEqual(["onReady", "pixi", "viewport"]);
+    expect(Object.keys(frozen.canvas.pixi).sort()).toEqual(["Container", "Graphics", "Text"]);
+  });
+
+  it("viewport surface exposes exactly { addChild, off, on, removeChild, toWorld }", () => {
+    //  the drawing escape hatch, minus any way to reach the Pixi class itself.
+    const vp = {
+      toWorld: () => ({ x: 0, y: 0 }),
+      addChild: () => null,
+      off: () => {},
+      removeChild: () => null,
+      on: () => {},
+    };
+    const frozen = freezeClientAPI({
+      ...makeApi(),
+      canvas: { viewport: vp, pixi: { Container: class {}, Graphics: class {}, Text: class {} }, onReady: () => {} },
+    });
+    expect(frozen.canvas.viewport).not.toBeNull();
+    expect(Object.keys(frozen.canvas.viewport as object).sort()).toEqual([
+      "addChild",
+      "off",
+      "on",
+      "removeChild",
+      "toWorld",
+    ]);
+  });
+
+  it("scene surface exposes exactly { cellLength, cellSize, tokens, units }", () => {
+    const frozen = freezeClientAPI(makeApi());
+    expect(Object.keys(frozen.scene).sort()).toEqual(["cellLength", "cellSize", "tokens", "units"]);
   });
 
   it("documents surface exposes exactly { get, list, subscribe, update }", () => {
