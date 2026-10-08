@@ -26,6 +26,12 @@ export interface SceneSystem {
   folder?: string | null;
   order?: number;
   grid: { size: number; color: number; type: "square" | "hex" };
+  //  ruler measurement scale. Optional on purpose: `Scene` is a base type, so it
+  // has no entry in the DocumentTypeRegistry, `currentSchemaVersion("Scene")` is
+  // undefined and migrateIfStale() returns early — no migration chain can ever
+  // apply. Readers fall back to 5 / "ft" (see the `ruler` extension).
+  cellLength?: number;
+  units?: "ft" | "m";
 }
 export type Scene = Document<SceneSystem>;
 

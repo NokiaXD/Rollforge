@@ -51,6 +51,9 @@ function SceneForm({
   const [gridSize, setGridSize] = useState(String(scene?.system.grid.size ?? 50));
   const [gridColor, setGridColor] = useState(scene ? "#" + scene.system.grid.color.toString(16).padStart(6, "0") : "#2c313a");
   const [gridType, setGridType] = useState<"square" | "hex">(scene?.system.grid.type ?? "square");
+  //  Ruler scale (Paso 24). Optional in SceneSystem, so the fallback is here.
+  const [cellLength, setCellLength] = useState(String(scene?.system.cellLength ?? 5));
+  const [units, setUnits] = useState<"ft" | "m">(scene?.system.units ?? "ft");
   const [folderId, setFolderId] = useState<string | null>(
     scene ? (scene.system.folder ?? null) : (initialFolderId ?? null),
   );
@@ -83,7 +86,8 @@ function SceneForm({
     const h = Number(height);
     const gs = Number(gridSize);
     const gc = parseInt(gridColor.replace(/^#/, ""), 16);
-    if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0 || !Number.isFinite(gs) || gs <= 0 || !Number.isFinite(gc)) {
+    const cl = Number(cellLength);
+    if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0 || !Number.isFinite(gs) || gs <= 0 || !Number.isFinite(gc) || !Number.isFinite(cl) || cl <= 0) {
       setFeedback({ kind: "err", text: "Invalid numeric fields." });
       return;
     }
@@ -103,6 +107,8 @@ function SceneForm({
         background: background.trim() || null,
         folder: folderId,
         grid: { size: gs, color: gc, type: gridType },
+        cellLength: cl,
+        units,
       };
       const finalName = name.trim() || id;
       createSceneRequest(id, finalName, system, img, folderId);
@@ -117,6 +123,8 @@ function SceneForm({
       background: background.trim() || null,
       folder: folderId,
       grid: { size: gs, color: gc, type: gridType },
+      cellLength: cl,
+      units,
     };
     updateSceneRequest(scene.id, name, system, img, folderId);
     setFeedback({ kind: "ok", text: "Scene updated." });
@@ -162,6 +170,23 @@ function SceneForm({
               <option value="hex">Hex</option>
             </select>
           </label>
+          <div class="grid grid-cols-2 gap-2">
+            <FormField label="Distance per cell" value={cellLength} onChange={setCellLength} />
+            <label class="flex flex-col gap-1 text-[11px]">
+              <span class="text-muted">Units</span>
+              <select
+                value={units}
+                onChange={(e) => setUnits((e.target as HTMLSelectElement).value as "ft" | "m")}
+                class="rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
+              >
+                <option value="ft">Feet (ft)</option>
+                <option value="m">Metres (m)</option>
+              </select>
+            </label>
+          </div>
+          <p class="text-[10px] text-muted">
+            Ruler: 1 cell = {cellLength} {units === "m" ? "m" : "ft"}
+          </p>
           <FormField label="Background (URL or color)" value={background} onChange={setBackground} />
 
           <ImageUploadField
