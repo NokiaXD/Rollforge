@@ -1,14 +1,56 @@
-import { signal } from "@preact/signals";
+import { signal, computed } from "@preact/signals";
 
 //  Core tabs are a fixed union; extension panels (Paso 18's
 //  api.ui.registerPanel) add their own ids at runtime, so the tab is just a
 //  string. The core views are matched by their literal ids; anything else is
 //  looked up in the panel registry.
-export type CoreSidebarTab = "scenes" | "tokens" | "actors";
+export type CoreSidebarTab = "scenes" | "tokens";
 export type SidebarTab = CoreSidebarTab | (string & {});
 
+import {
+  openWindowState,
+  closeWindowState,
+  focusWindowState,
+} from "../ui/windowFrameUtils";
+
 export const activeSidebarTab = signal<SidebarTab | null>("scenes");
-export const openDocument = signal<string | null>(null);
+export const windowFocusOrder = signal<string[]>([]);
+
+export const openDocuments = computed<string[]>(() => {
+  return windowFocusOrder.value
+    .filter((k) => k.startsWith("doc:"))
+    .map((k) => k.slice(4));
+});
+
+export const activeDocument = computed<string | null>(() => {
+  const docs = windowFocusOrder.value.filter((k) => k.startsWith("doc:"));
+  return docs.length > 0 ? docs[docs.length - 1]!.slice(4) : null;
+});
+
+export function openDocument(id: string): void {
+  windowFocusOrder.value = openWindowState(windowFocusOrder.value, `doc:${id}`);
+}
+
+export function closeDocument(id: string): void {
+  windowFocusOrder.value = closeWindowState(windowFocusOrder.value, `doc:${id}`);
+}
+
+export function focusDocument(id: string): void {
+  windowFocusOrder.value = focusWindowState(windowFocusOrder.value, `doc:${id}`);
+}
+
+export function openWindow(key: string): void {
+  windowFocusOrder.value = openWindowState(windowFocusOrder.value, key);
+}
+
+export function closeWindow(key: string): void {
+  windowFocusOrder.value = closeWindowState(windowFocusOrder.value, key);
+}
+
+export function focusWindow(key: string): void {
+  windowFocusOrder.value = focusWindowState(windowFocusOrder.value, key);
+}
+
 export const gmUsersModalOpen = signal<boolean>(false);
 export const settingsModalOpen = signal<boolean>(false);
 
