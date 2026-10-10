@@ -18,6 +18,8 @@ import { Sidebar } from "./layout/Sidebar";
 import { RightSidebar } from "./layout/RightSidebar";
 import { StatusBar } from "./layout/StatusBar";
 import { toggleChat } from "../state/chat";
+import { toggleLeftSidebar, toggleRightSidebar } from "../state/layout";
+import { ToastContainer } from "./ToastContainer";
 import { GmUsersModal } from "./GmUsersModal";
 import { SettingsModal } from "./SettingsModal";
 import { SceneFormModal } from "./SceneFormModal";
@@ -25,6 +27,7 @@ import { FolderFormModal } from "./FolderFormModal";
 import { FolderDeleteModal } from "./FolderDeleteModal";
 import { ContextMenu } from "./ContextMenu";
 import { SheetModal } from "./SheetModal";
+import { FloatingPanels } from "./FloatingPanels";
 import "../extensions/bootstrap";
 import { createPixi } from "../canvas/pixiApp";
 import { setViewport } from "../canvas/currentViewport";
@@ -50,9 +53,9 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         if (e.altKey || e.shiftKey) {
-          toggleChat();
+          toggleRightSidebar();
         } else {
-          toggleSidebar(activeSidebarTab.value ?? "scenes");
+          toggleLeftSidebar();
         }
       }
     };
@@ -237,7 +240,9 @@ export function App() {
       <FolderFormModal />
       <FolderDeleteModal />
       <ContextMenu />
+      <FloatingPanels />
       <SheetModal />
+      <ToastContainer />
     </div>
   );
 }

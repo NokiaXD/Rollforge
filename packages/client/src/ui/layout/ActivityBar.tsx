@@ -1,30 +1,24 @@
 import { useMemo } from "preact/hooks";
 import { minidenticon } from "minidenticons";
 import {
-  activeSidebarTab,
-  toggleSidebar,
   gmUsersModalOpen,
   settingsModalOpen,
   openContextMenu,
-  type SidebarTab,
 } from "../../state/ui";
 import { currentUser } from "../../state/auth";
 import { logout } from "../../net/auth";
-import { listPanels } from "../../extensions/clientPanels";
+import {
+  panelDocks,
+  visiblePanels,
+  effectiveLeftTab,
+  effectiveFloatingPanels,
+  isLeftSidebarEffectiveOpen,
+  selectLeftTab,
+} from "../../state/layout";
 
-//  Icon = Nerd Fonts classes, rendered as <i class="nf nf-fa-heart" />.
-//  Extension panels may still ship a raw glyph (\ue000 block) as the icon,
-//  in which case it is used as text inside the bare <i class="nf">.
-interface ActivityItem {
-  id: SidebarTab;
-  label: string;
-  icon: string;
-  badge?: number;
-}
+export const isIconClass = (icon: string) => icon.startsWith("nf-");
 
-const isIconClass = (icon: string) => icon.startsWith("nf-");
-
-function Icon({ icon, class: cls }: { icon: string; class?: string }) {
+export function Icon({ icon, class: cls }: { icon: string; class?: string }) {
   return isIconClass(icon) ? (
     <i class={`nf ${icon} ${cls ?? ""}`} />
   ) : (
@@ -33,32 +27,18 @@ function Icon({ icon, class: cls }: { icon: string; class?: string }) {
 }
 
 export function ActivityBar() {
-  const activeTab = activeSidebarTab.value;
   const user = currentUser.value;
   const isGM = user?.role === "GM";
 
-  //  Extension-contributed panels (Paso 18) append after the core tabs, for
-  //  GM and Player alike: an extension that wants a role-specific panel
-  //  renders nothing in its component rather than the core guessing on its
-  //  behalf. listPanels() reads a signal, so the bar re-renders when a panel
-  //  registers late (extensions only load once the session is authenticated).
-  const panelItems: ActivityItem[] = listPanels().map((p) => ({
-    id: p.panel.id,
-    label: p.panel.title,
-    icon: p.panel.icon ?? "nf-dev-supabase",
-  }));
+  // Filter panels currently docked to "left" (not floating)
+  const leftPanels = visiblePanels.value.filter(
+    (p) =>
+      (panelDocks.value[p.panel.id] ?? "left") === "left" &&
+      !effectiveFloatingPanels.value.includes(p.panel.id),
+  );
 
-  const coreItems: ActivityItem[] = isGM
-    ? [
-        { id: "scenes", label: "Gestor de Escenas", icon: "nf-cod-map" },
-        { id: "actors", label: "Actores y Fichas", icon: "nf-cod-account" },
-        { id: "tokens", label: "Tokens en Escena", icon: "nf-fa-user_group" },
-      ]
-    : [
-        { id: "actors", label: "Mis Actores", icon: "nf-cod-account" },
-        { id: "tokens", label: "Tokens en Escena", icon: "\uedca" },
-      ];
-  const items = [...coreItems, ...panelItems];
+  const activeTab = effectiveLeftTab.value;
+  const isOpen = isLeftSidebarEffectiveOpen.value;
 
   const handleUserMenu = (e: MouseEvent) => {
     e.preventDefault();
@@ -97,14 +77,14 @@ export function ActivityBar() {
     <aside class="pointer-events-auto flex w-12 shrink-0 select-none flex-col justify-between border-r border-white/10 bg-[#14171c]/90 backdrop-blur-md py-2 shadow-lg z-20">
       {/* Top action tabs */}
       <div class="flex flex-col items-center gap-1">
-        {items.map((item) => {
-          const isActive = activeTab === item.id;
+        {leftPanels.map((item) => {
+          const isActive = isOpen && activeTab === item.panel.id;
           return (
             <button
-              key={item.id}
+              key={item.panel.id}
               type="button"
-              onClick={() => toggleSidebar(item.id)}
-              title={`${item.label} (Ctrl+B)`}
+              onClick={() => selectLeftTab(item.panel.id)}
+              title={`${item.panel.title} (Ctrl+B)`}
               class={`group relative flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
                 isActive
                   ? "text-white bg-white/10"
@@ -115,7 +95,7 @@ export function ActivityBar() {
               {isActive && (
                 <div class="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-accent" />
               )}
-              <Icon icon={item.icon} class="text-2xl" />
+              <Icon icon={item.panel.icon ?? "nf-cod-window"} class="text-2xl" />
             </button>
           );
         })}

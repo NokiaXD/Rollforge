@@ -6,6 +6,7 @@ import { createTokenRequest, setActiveSceneAsGM, setGmCamera } from "../../net/s
 import { logout } from "../../net/auth";
 
 import { chatOpen, toggleChat, messages } from "../../state/chat";
+import { toggleRightSidebar } from "../../state/layout";
 
 export function TopBar() {
   const user = currentUser.value;
@@ -85,8 +86,8 @@ export function TopBar() {
       <div class="flex items-center gap-2.5">
         <button
           type="button"
-          onClick={() => toggleChat()}
-          title="Alternar Chat & Dados (Ctrl+Alt+B)"
+          onClick={() => toggleRightSidebar()}
+          title="Alternar Barra Lateral Derecha (Ctrl+Alt+B)"
           class="text-muted transition-colors *:hover:text-white"
         >
           {/* VS Code secondary sidebar icon (right panel) */}

@@ -60,6 +60,12 @@ export function ChatView() {
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     if (nearBottom) el.scrollTop = el.scrollHeight;
   }, [messages.value.length]);
