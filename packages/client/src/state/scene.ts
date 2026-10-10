@@ -1,7 +1,6 @@
-import { effect, signal } from "@preact/signals";
+import { computed, effect, signal } from "@preact/signals";
 import type { Scene, SceneEvent, SceneSystem } from "@rollforge/protocol";
 import { currentUser } from "./auth";
-import { viewedScene, removeScene, upsertScene } from "./scenes";
 import { removeFolder, upsertFolder } from "./folders";
 
 export interface Token {
@@ -32,6 +31,13 @@ export const locks = signal<Map<string, string>>(new Map());
 // brief error banner shown when an intent is rejected. Cleared on next user action.
 export const lastError = signal<string | null>(null);
 export const focusedTokenId = signal<string | null>(null);
+
+// All scenes loaded in memory
+export const scenes = signal<Map<string, Scene>>(new Map());
+
+// The scene THIS client renders. For GM = their camera; for Player = active scene.
+export const viewedScene = computed<Scene | null>(() => scenes.value.get(currentSceneId.value) ?? null);
+
 // Driven by the rendered scene's grid size via the effect below. Tokens read this reactively.
 export const cellSize = signal<number>(50);
 
@@ -40,11 +46,24 @@ effect(() => {
   if (currentSceneId.value !== target) currentSceneId.value = target;
 });
 
-// Sync cellSize from the rendered scene (not just active). The rendered scene's grid IS the cell size.
+// Sync cellSize from the rendered scene.
 effect(() => {
   const scene = viewedScene.value;
   if (scene) cellSize.value = scene.system.grid.size;
 });
+
+export function upsertScene(scene: Scene): void {
+  const next = new Map(scenes.value);
+  next.set(scene.id, scene);
+  scenes.value = next;
+}
+
+export function removeScene(sceneId: string): void {
+  if (!scenes.value.has(sceneId)) return;
+  const next = new Map(scenes.value);
+  next.delete(sceneId);
+  scenes.value = next;
+}
 
 export function upsertToken(token: Token): void {
   const next = new Map(tokens.value);
