@@ -1,21 +1,26 @@
 import { DocumentUpdateRejection, freezeClientAPI, type ClientExtensionAPI, type ClientPanelRegistration, type ClientViewportLike } from "@rollforge/extension-api";
 import { effect } from "@preact/signals";
-import { h } from "preact";
+import { Fragment, h } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Container, Graphics, Text } from "pixi.js";
 import type { Viewport } from "pixi-viewport";
 import type { Document } from "@rollforge/protocol";
 import { registerSheet, setOwnerMap } from "./clientSheets";
-import { registerPanel } from "./clientPanels";
+import { registerPanel, registerCorePanel } from "./clientPanels";
 import { CustomActorSheet } from "./builtins/customActorSheet";
+import { ScenesView } from "../ui/views/ScenesView";
+import { TokensView } from "../ui/views/TokensView";
+import { ChatView } from "../ui/views/ChatView";
 import { documents, listDocumentsByType, upsertDocument } from "../state/documents";
 import { myUserId, currentSceneId, cellSize, tokens } from "../state/scene";
 import { viewedScene } from "../state/scenes";
 import { getViewport, onViewportReady } from "../canvas/currentViewport";
-import { httpPatchDocument } from "./documentTransport";
+import { httpPatchDocument, httpPostDocument } from "./documentTransport";
 import { fetchDocumentTypes } from "../state/extensionSources";
-import { fetchMe, authStatus } from "../state/auth";
+import { currentUser, fetchMe, authStatus } from "../state/auth";
+import { openDocument } from "../state/ui";
 import { loadClientExtensions } from "./extensionLoader";
+import { addToast } from "../state/toasts";
 
 //  the client-side "extension host" seed. Builds the frozen ClientExtensionAPI
 // from the host's transport (signal store + httpPatchDocument), then hands it
@@ -53,6 +58,19 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
       },
       list: <T extends Document = Document>(type: string): readonly T[] =>
         listDocumentsByType(type) as unknown as readonly T[],
+      create: async <T extends Document = Document>(
+        input: Omit<T, "_rev" | "schemaVersion">,
+      ): Promise<T> => {
+        // `schemaVersion` is stripped here as well as by the server: the
+        // typed input does not carry it, but a JS extension can still pass it,
+        // and the host is the only thing that may name a version.
+        const { schemaVersion: _ignored, ...fields } = input as Record<string, unknown>;
+        const { body } = await httpPostDocument(fields);
+        const doc = (body ?? null) as Document | null;
+        if (!doc || typeof doc.id !== "string") throw new DocumentUpdateRejection("network-error");
+        upsertDocument(doc);
+        return doc as T;
+      },
     },
     hooks: {
       // client-side hook surface is intentionally empty — no client
@@ -86,16 +104,26 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
         });
       },
       notify: (msg) => {
-        // console fallback; the real toast system lives elsewhere.
-        console.info("[extension-api]", msg);
+        addToast({ text: msg, kind: "info" });
+      },
+      //  Paso 25: the same signal the core Actores view writes, so an extension
+      //  list can hand a row off to the registered sheet. SheetModal reads it
+      //  and fetches the document itself if the store does not have it.
+      openDocument: (id: string) => {
+        openDocument(id);
       },
       //  The host's preact, so a raw-served extension file never has to import
       //  it (see ClientPreactAPI: the import map gives it a second instance).
-      preact: { h, useState, useRef, useEffect, useMemo, useCallback },
+      preact: { h, Fragment, useState, useRef, useEffect, useMemo, useCallback },
     },
     context: {
       userId: myUserId.value ?? "",
       sceneId: currentSceneId.value,
+      //  Snapshot, like userId/sceneId above: a getter would be fresher but
+      //  deepFreeze skips accessors, and this object is built per extension
+      //  AFTER fetchMe() (loadExtensionHost runs under the authenticated
+      //  branch), so the role is already settled.
+      role: currentUser.value?.role ?? null,
     },
     //  Paso 24: the drawing surface. A getter, because extensions activate
     //  before ui/App.tsx creates Pixi — a captured value would be forever null.
@@ -142,6 +170,40 @@ registerSheet({
 });
 
 const api = buildClientAPI();
+
+registerCorePanel({
+  panel: {
+    id: "scenes",
+    title: "Gestor de Escenas",
+    icon: "nf-cod-map",
+    requiresGm: true,
+    component: () => <ScenesView />,
+  },
+  api,
+  extensionId: "core",
+});
+
+registerCorePanel({
+  panel: {
+    id: "tokens",
+    title: "Tokens en Escena",
+    icon: "nf-fa-user_group",
+    component: () => <TokensView />,
+  },
+  api,
+  extensionId: "core",
+});
+
+registerCorePanel({
+  panel: {
+    id: "chat",
+    title: "Chat & Dados",
+    icon: "nf-fa-comments",
+    component: () => <ChatView />,
+  },
+  api,
+  extensionId: "core",
+});
 
 //  fetchDocumentTypes → setOwnerMap → loadClientExtensions bridges the
 // server's declarative registries into the client. Failure is non-fatal: an

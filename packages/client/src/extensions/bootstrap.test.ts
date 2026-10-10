@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DocumentUpdateRejection } from "@rollforge/extension-api";
-import { httpPatchDocument } from "./documentTransport";
+import { httpPatchDocument, httpPostDocument } from "./documentTransport";
 import { bootstrapClient, waitForApi } from "./bootstrap";
 import { setAuthenticated, setAnon } from "../state/auth";
 
@@ -166,6 +166,79 @@ describe("httpPatchDocument translation table", () => {
     const result = await httpPatchDocument("doc-1", {}, fetchImpl);
     expect(result.ok).toBe(true);
     expect(result.body).toBeUndefined();
+  });
+});
+
+describe("httpPostDocument translation table", () => {
+  const input = { id: "cpr-1", type: "cpr-character", name: "V", system: {} };
+
+  it("returns the created document on 201", async () => {
+    const body = { id: "cpr-1", name: "V" };
+    const fetchImpl = fakeFetch({ status: 201, body });
+    const result = await httpPostDocument(input, fetchImpl);
+    expect(result).toEqual({ ok: true, body });
+    // the extension must not get to name the route or the version
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(url).toBe("/api/documents");
+    expect((init as RequestInit).method).toBe("POST");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual(input);
+  });
+
+  it("translates 403 forbidden AND read-only → forbidden", async () => {
+    for (const error of ["forbidden", "read-only"]) {
+      const fetchImpl = fakeFetch({ status: 403, body: { error } });
+      await expect(httpPostDocument(input, fetchImpl)).rejects.toMatchObject({
+        reason: "forbidden",
+      });
+    }
+  });
+
+  it("translates 409 id-exists → id-exists", async () => {
+    const fetchImpl = fakeFetch({ status: 409, body: { error: "id-exists" } });
+    await expect(httpPostDocument(input, fetchImpl)).rejects.toMatchObject({ reason: "id-exists" });
+  });
+
+  it("translates 503 extension-not-ready with type → reason + meta", async () => {
+    const fetchImpl = fakeFetch({
+      status: 503,
+      body: { error: "extension-not-ready", type: "cpr-character" },
+    });
+    let caught: unknown;
+    try {
+      await httpPostDocument(input, fetchImpl);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(DocumentUpdateRejection);
+    const rej = caught as DocumentUpdateRejection;
+    expect(rej.reason).toBe("extension-not-ready");
+    expect(rej.meta).toEqual({ type: "cpr-character" });
+  });
+
+  it("translates an unmapped 409 → network-error rather than guessing id-exists", async () => {
+    const fetchImpl = fakeFetch({ status: 409, body: { error: "schema-too-new" } });
+    await expect(httpPostDocument(input, fetchImpl)).rejects.toMatchObject({
+      reason: "network-error",
+    });
+  });
+
+  it("translates 400 bad-request → network-error", async () => {
+    const fetchImpl = fakeFetch({ status: 400, body: { error: "bad-request" } });
+    await expect(httpPostDocument(input, fetchImpl)).rejects.toMatchObject({
+      reason: "network-error",
+    });
+  });
+
+  it("translates fetch rejection and unparseable body → network-error", async () => {
+    const thrown = vi.fn(async () => {
+      throw new TypeError("NetworkError");
+    }) as unknown as typeof fetch;
+    await expect(httpPostDocument(input, thrown)).rejects.toMatchObject({
+      reason: "network-error",
+    });
+    await expect(
+      httpPostDocument(input, fakeFetch({ status: 403, jsonReject: true })),
+    ).rejects.toMatchObject({ reason: "network-error" });
   });
 });
 

@@ -95,3 +95,67 @@ export async function httpPatchDocument(
 // exported so bootstrap.ts can call the same translator used in
 // tests. Keeps the table in one place and prevents drift.
 export type { DocumentUpdateRejectionReason };
+
+//  Paso 25 — the POST half of the §4 translation table, for
+//  api.documents.create. Separate from httpPatchDocument because the status
+//  sets barely overlap: a create has no stale-rev and no migration-blocked
+//  (the document does not exist yet), but it has one failure PATCH cannot
+//  produce — 409 id-exists, which is why that reason joined the union.
+//  Translation table (matches createDocumentRouter's POST "/"):
+//   201                  → ok, returns the parsed document
+//   403 forbidden        → "forbidden"
+//   403 read-only        → "forbidden" (a compendium-scoped type)
+//   409 id-exists        → "id-exists"
+//   503 extension-not-ready → "extension-not-ready" + { type }
+//   anything else        → "network-error"
+export async function httpPostDocument(
+  input: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PatchResult> {
+  let res: Response;
+  try {
+    res = await fetchImpl(`/api/documents`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new DocumentUpdateRejection("network-error");
+  }
+
+  let body: ErrorBody = undefined;
+  let bodyParseFailed = false;
+  try {
+    body = (await res.json()) as ErrorBody;
+  } catch {
+    bodyParseFailed = true;
+  }
+
+  if (res.ok) {
+    return { ok: true, body };
+  }
+  // Same reasoning as the PATCH branch: an unparseable error body cannot be
+  // classified, so it degrades to network-error instead of guessing a reason.
+  if (bodyParseFailed) {
+    throw new DocumentUpdateRejection("network-error");
+  }
+
+  const reason = body?.error;
+  if (res.status === 403) {
+    // "forbidden" and "read-only" (a compendium-scoped type) both mean the
+    // caller may not write this document, so both land on the same reason.
+    throw new DocumentUpdateRejection("forbidden");
+  }
+  if (res.status === 409 && reason === "id-exists") {
+    throw new DocumentUpdateRejection("id-exists");
+  }
+  if (res.status === 503 && reason === "extension-not-ready") {
+    throw new DocumentUpdateRejection("extension-not-ready", { type: body?.type });
+  }
+  // migration-blocked / schema-too-new are unreachable here: both are
+  // properties of an EXISTING document, and create() only reaches the import
+  // branch through a `sourceId` the typed input does not carry. They fall to
+  // network-error, which is the honest "we did not expect this".
+  throw new DocumentUpdateRejection("network-error");
+}

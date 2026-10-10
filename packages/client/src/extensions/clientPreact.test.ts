@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { h } from "preact";
+import { Fragment, h } from "preact";
 import { useState } from "preact/hooks";
 import { buildClientAPI } from "./bootstrap";
 
@@ -11,6 +11,7 @@ describe("client extensions get the host's preact", () => {
   it("hands out this very module's preact, so hooks share one instance", () => {
     const api = buildClientAPI();
     expect(api.ui.preact.h).toBe(h);
+    expect(api.ui.preact.Fragment).toBe(Fragment);
     expect(api.ui.preact.useState).toBe(useState);
   });
 

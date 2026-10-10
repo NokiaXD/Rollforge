@@ -69,11 +69,11 @@ describe("client panel registry", () => {
 
   it("refuses a panel id that shadows a core sidebar tab", () => {
     const warnings: string[] = [];
-    registerPanel({ panel: panel("actors"), api: fakeApi("ext-a"), extensionId: "ext-a" }, (m) =>
+    registerPanel({ panel: panel("tokens"), api: fakeApi("ext-a"), extensionId: "ext-a" }, (m) =>
       warnings.push(m),
     );
-    // It would otherwise mount stacked on top of the core Actores view.
-    expect(panelFor("actors")).toBeUndefined();
+    // It would otherwise mount stacked on top of the core tokens view.
+    expect(panelFor("tokens")).toBeUndefined();
     expect(listPanels()).toHaveLength(0);
     expect(warnings[0]).toMatch(/collides with a core sidebar tab/);
   });

@@ -3,41 +3,35 @@ import type { Document } from "@rollforge/protocol";
 import type { ClientExtensionAPI, ClientPanelRegistration } from "@rollforge/extension-api";
 import { fetchDocuments, listDocumentsByType } from "../state/documents";
 
-//  Client-side panel registry — the mirror of clientSheets.ts, for the
-//  Paso 18 `api.ui.registerPanel` surface. An extension contributes a panel,
-//  the host mounts it in the Sidebar when the tab is active.
-//
-//  One difference from sheets: the host owns `entries`. The panel declares
-//  which documentTypes it browses and the host prefetches them and hands the
-//  resulting documents over as props. A client extension has no HTTP client
-//  and cannot import the client's signal store (it is served raw and its only
-//  resolvable specifiers are the import map), so without this a panel would
-//  have to be handed a callback per row or reimplement fetching.
+export interface CorePanelExtra {
+  requiresGm?: boolean;
+}
 
 export interface ClientPanelEntry {
-  panel: ClientPanelRegistration;
-  //  the api instance the panel was registered with, so the component it
-  //  renders can be handed the same scoped api the extension captured.
+  panel: ClientPanelRegistration & CorePanelExtra;
   api: ClientExtensionAPI;
   extensionId: string;
 }
 
-//  A signal, not a plain array: client extensions register *after* first
-//  paint whenever the boot was anon (the sources endpoint 401s until login),
-//  so the ActivityBar and Sidebar have to re-render when a panel lands.
 const panels = signal<readonly ClientPanelEntry[]>([]);
 
-//  Sidebar mounts a core view and an extension panel by matching the same
-//  `tab` id, so a panel that shadows a core tab would render stacked on top
-//  of it. Refuse the registration instead — the core tab wins, because the
-//  user asked for that tab by clicking the core icon.
-const CORE_TAB_IDS: ReadonlySet<string> = new Set(["scenes", "tokens", "actors"]);
+export const CORE_PANEL_IDS: ReadonlySet<string> = new Set(["scenes", "tokens", "chat"]);
+const CORE_ORDER: readonly string[] = ["scenes", "tokens", "chat"];
+
+export function registerCorePanel(entry: ClientPanelEntry): void {
+  const existingIdx = panels.value.findIndex((p) => p.panel.id === entry.panel.id);
+  if (existingIdx >= 0) {
+    panels.value = panels.value.map((p, i) => (i === existingIdx ? entry : p));
+  } else {
+    panels.value = [...panels.value, entry];
+  }
+}
 
 export function registerPanel(
   entry: ClientPanelEntry,
   onError?: (message: string) => void,
 ): void {
-  if (CORE_TAB_IDS.has(entry.panel.id)) {
+  if (CORE_PANEL_IDS.has(entry.panel.id) || entry.extensionId === "core") {
     onError?.(
       `[panels] panel id "${entry.panel.id}" collides with a core sidebar tab; not registered`,
     );
@@ -45,10 +39,6 @@ export function registerPanel(
   }
   const existingIdx = panels.value.findIndex((p) => p.panel.id === entry.panel.id);
   if (existingIdx >= 0) {
-    // Last registration wins for the same id. Unlike sheets there is no
-    // ownership to reconcile: a panel id is a tab, and re-registering the
-    // same tab is what an HMR reload does. Log it rather than throwing —
-    // a client-side hiccup must not take down the app shell.
     onError?.(
       `[panels] panel id "${entry.panel.id}" was already registered by "${panels.value[existingIdx]!.extensionId}"; replacing it with "${entry.extensionId}"`,
     );
@@ -57,11 +47,6 @@ export function registerPanel(
     panels.value = [...panels.value, entry];
   }
   for (const type of entry.panel.documentTypes ?? []) {
-    //  Fire-and-forget prefetch, deliberately swallowing the failure: this
-    //  runs while the panel registers, not while the user is looking at it,
-    //  so a rejected promise here would be an unhandled rejection with no UI
-    //  to report it into. The panel simply renders empty and the socket
-    //  broadcast fills it in once the server is reachable.
     void fetchDocuments(type).catch(() => {});
   }
 }
@@ -71,13 +56,17 @@ export function panelFor(id: string): ClientPanelEntry | undefined {
 }
 
 export function listPanels(): readonly ClientPanelEntry[] {
-  return panels.value;
+  const list = [...panels.value];
+  return list.sort((a, b) => {
+    const aCore = CORE_ORDER.indexOf(a.panel.id);
+    const bCore = CORE_ORDER.indexOf(b.panel.id);
+    if (aCore >= 0 && bCore >= 0) return aCore - bCore;
+    if (aCore >= 0) return -1;
+    if (bCore >= 0) return 1;
+    return a.panel.id.localeCompare(b.panel.id);
+  });
 }
 
-//  Documents for the panel's declared types, flattened. Reads the
-//  `documents` signal through listDocumentsByType, so mounting inside a
-//  component subscribes to it: the panel re-renders when a document of those
-//  types arrives (e.g. the socket broadcast after a GM loads a pack).
 export function panelEntries(panel: ClientPanelRegistration): readonly Document[] {
   const out: Document[] = [];
   for (const type of panel.documentTypes ?? []) out.push(...listDocumentsByType(type));
