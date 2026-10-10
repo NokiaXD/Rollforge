@@ -21,7 +21,16 @@ import {
 } from "../state/scene";
 import { appendMessage, replaceMessages } from "../state/chat";
 import { upsertDocument, removeDocument } from "../state/documents";
-import { openDocument } from "../state/ui";
+import { closeDocument } from "../state/ui";
+import { shouldShowChatToast, formatChatToastText } from "../state/layoutTransitions";
+import {
+  panelDocks,
+  leftSidebarOpen,
+  rightSidebarOpen,
+  activeLeftTab,
+  activeRightTab,
+} from "../state/layout";
+import { addToast } from "../state/toasts";
 
 let socket: Socket | null = null;
 let lastJoinedScene: string | null = null;
@@ -90,8 +99,24 @@ export function connectSocket(): Socket {
 
   socket.on("chatMessage", (m: ChatMessageEvent) => {
     appendMessage(m);
-    // ephemeral server rejections get echoed back to the user through
-    // the same chatMessage socket that we already listen to. Show them inline.
+
+    const chatDock = panelDocks.value.chat ?? "right";
+    if (
+      shouldShowChatToast(
+        false,
+        chatDock,
+        leftSidebarOpen.value,
+        rightSidebarOpen.value,
+        activeLeftTab.value,
+        activeRightTab.value,
+      )
+    ) {
+      addToast({
+        text: formatChatToastText(m),
+        kind: m.result ? "chat" : "info",
+      });
+    }
+
     if (m.whisperTo === "") {
       // whisper not handled client-side yet (server resolves username → userId)
     }
@@ -107,7 +132,7 @@ export function connectSocket(): Socket {
 
   socket.on("documentDeleted", (ev: { type: "DocumentDeleted"; id: string }) => {
     removeDocument(ev.id);
-    if (openDocument.value === ev.id) openDocument.value = null;
+    closeDocument(ev.id);
   });
 
   // Sync joinScene/leaveScene with currentSceneId (derived from role).
