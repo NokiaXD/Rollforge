@@ -45,6 +45,7 @@ export async function createPixi(host: HTMLElement): Promise<PixiCtx> {
   const resizeCanvas = () => {
     const w = host.clientWidth || window.innerWidth;
     const h = host.clientHeight || window.innerHeight;
+    if (w <= 0 || h <= 0) return;
     app.renderer.resize(w, h);
     viewport.resize(w, h, viewport.worldWidth, viewport.worldHeight);
   };
