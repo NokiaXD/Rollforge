@@ -9,11 +9,14 @@ function makeApi(): ClientExtensionAPI {
     subscribe: <T extends { id: string } = never>(_id: string, _fn: (doc: T) => void) => () => {},
     update: async <T extends { id: string } = never>(_id: string, _patch: Partial<T>) => ({}) as T,
     list: <T extends { id: string } = never>(_type: string) => [] as readonly T[],
+    create: async <T extends { id: string } = never>(_input: Omit<T, "_rev" | "schemaVersion">) =>
+      ({}) as T,
   };
   const ui: ClientUIAPI = {
     registerSheet: () => {},
     registerPanel: () => {},
     notify: () => {},
+    openDocument: () => {},
   };
   const hooksEngine = new HooksEngine();
   return {
@@ -24,7 +27,7 @@ function makeApi(): ClientExtensionAPI {
       off: (event, fn) => hooksEngine.off(event, fn),
     },
     ui,
-    context: { userId: "u1", sceneId: null },
+    context: { userId: "u1", sceneId: null, role: "GM" },
     canvas: {
       viewport: null,
       pixi: { Container: class {}, Graphics: class {}, Text: class {} },
@@ -109,20 +112,39 @@ describe("freezeClientAPI", () => {
     expect(Object.keys(frozen.scene).sort()).toEqual(["cellLength", "cellSize", "tokens", "units"]);
   });
 
-  it("documents surface exposes exactly { get, list, subscribe, update }", () => {
+  it("documents surface exposes exactly { create, get, list, subscribe, update }", () => {
     const frozen = freezeClientAPI(makeApi());
     // `list` added in Paso 18: an extension cannot show a browser over a
     // collection of documents without a way to enumerate them, and a client
-    // extension has no HTTP client of its own.
-    expect(Object.keys(frozen.documents).sort()).toEqual(["get", "list", "subscribe", "update"]);
+    // extension has no HTTP client of its own. `create` in Paso 25: a panel
+    // cannot offer "make me a character" without it.
+    expect(Object.keys(frozen.documents).sort()).toEqual([
+      "create",
+      "get",
+      "list",
+      "subscribe",
+      "update",
+    ]);
   });
 
-  it("ui surface exposes exactly { notify, registerPanel, registerSheet }", () => {
+  it("ui surface exposes exactly { notify, openDocument, registerPanel, registerSheet }", () => {
     const frozen = freezeClientAPI(makeApi());
     // `registerPanel` added in Paso 18: the first extension-owned surface
-    // that is not a modal sheet. §13 covers the shape of `api` under semver,
-    // so the contract is asserted here and the addition is deliberate.
-    expect(Object.keys(frozen.ui).sort()).toEqual(["notify", "registerPanel", "registerSheet"]);
+    // that is not a modal sheet. `openDocument` in Paso 25: the way a panel
+    // hands a row to the sheet. §13 covers the shape of `api` under semver,
+    // so the contract is asserted here and each addition is deliberate.
+    expect(Object.keys(frozen.ui).sort()).toEqual([
+      "notify",
+      "openDocument",
+      "registerPanel",
+      "registerSheet",
+    ]);
+  });
+
+  it("context carries the caller's role, so a panel can hide GM-only controls", () => {
+    // documents.create is requireGm server-side; without this an extension
+    // can only render the button and surface the 403 afterwards.
+    expect(freezeClientAPI(makeApi()).context.role).toBe("GM");
   });
 
   it("hooks surface is restricted to { filter, off, on } and does not leak HooksEngine", () => {
@@ -176,13 +198,14 @@ describe("DocumentUpdateRejection", () => {
     expect(rej.meta).toEqual({ id: "doc-1" });
   });
 
-  it("supports all six reasons from the contract", () => {
+  it("supports all seven reasons from the contract", () => {
     const reasons: DocumentUpdateRejectionReason[] = [
       "forbidden",
       "extension-not-ready",
       "migration-blocked",
       "stale-rev",
       "not-found",
+      "id-exists",
       "network-error",
     ];
     for (const reason of reasons) {

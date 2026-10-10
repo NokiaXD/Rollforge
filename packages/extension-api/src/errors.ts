@@ -21,6 +21,10 @@ export type DocumentUpdateRejectionReason =
   | "migration-blocked"
   | "stale-rev"
   | "not-found"
+  //  POST /api/documents only: the id the caller asked for is taken. Real
+  //  rather than network-error because it is the one create failure an
+  //  extension can act on (pick another id / report the clash to the user).
+  | "id-exists"
   | "network-error";
 
 export class DocumentUpdateRejection extends Error {

@@ -1,4 +1,4 @@
-import type { ComponentType, h as PreactH } from "preact";
+import type { ComponentType, Fragment as PreactFragment, h as PreactH } from "preact";
 import type { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Document, HooksAPI } from "@rollforge/protocol";
 import type { DocumentUpdateRejection } from "./errors";
@@ -19,6 +19,14 @@ export interface ClientDocumentsAPI {
   //  its own. Read-through only; registering a panel with documentTypes
   //  makes the host prefetch, so this is a synchronous read once loaded.
   list<T extends Document = Document>(type: string): readonly T[];
+  //  Paso 25 — the missing counterpart to the server's DocumentsAPI.create, and
+  //  the reason a panel could not offer "make me a character" without hand
+  //  writing `fetch("/api/documents")` and hoping the host never moves the
+  //  route (which the compendium extension already does). GM-only server-side
+  //  (`requireGm` on POST), so a player gets `forbidden` — see `role` below.
+  //  `schemaVersion` is dropped by the host on purpose: a client never names
+  //  the version of a document it creates.
+  create<T extends Document = Document>(input: Omit<T, "_rev" | "schemaVersion">): Promise<T>;
 }
 
 //  A sidebar panel. `entries` is resolved by the HOST from the
@@ -56,6 +64,11 @@ export interface ClientUIAPI {
   //  panel. Semver: additive, and it opens the door for the later steps.
   registerPanel(opts: ClientPanelRegistration): void;
   notify(message: string): void;
+  //  Paso 25 — open a document in the host's sheet modal, the same signal the
+  //  core Actores view writes. Without it a panel could list a collection but
+  //  had no way into the sheets the collection is made of, so every row would
+  //  have been decoration.
+  openDocument(id: string): void;
   //  The host's OWN preact, handed over for the same reason as
   //  `api.canvas.pixi`: a raw-served extension file must not `import "preact"`.
   //  The import map only exists under the Vite dev server, and even there
@@ -70,6 +83,7 @@ export interface ClientUIAPI {
 
 export interface ClientPreactAPI {
   h: typeof PreactH;
+  Fragment: typeof PreactFragment;
   useState: typeof useState;
   useRef: typeof useRef;
   useEffect: typeof useEffect;
@@ -80,6 +94,11 @@ export interface ClientPreactAPI {
 export interface ClientExtensionContext {
   userId: string;
   sceneId: string | null;
+  //  Paso 25. `null` until authenticated. Needed because the host never asks
+  //  an extension to guess a role — but without it an extension cannot hide a
+  //  GM-only control (documents.create is requireGm server-side), it can only
+  //  render the button and surface the 403 afterwards.
+  role: "GM" | "Player" | null;
 }
 
 //  Paso 24 — the drawing surface. This is the ONE documented exception to
