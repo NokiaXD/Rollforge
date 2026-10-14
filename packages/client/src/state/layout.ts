@@ -37,6 +37,9 @@ export const panelDocks = signal<Record<string, PanelDock>>({ ...DEFAULT_PANEL_D
 
 export const floatingPanels = signal<string[]>([]);
 
+/** Floating panels collapsed to just their header. */
+export const collapsedPanels = signal<string[]>([]);
+
 export const activeLeftTab = signal<string | null>("scenes");
 export const activeRightTab = signal<string | null>("chat");
 
@@ -147,6 +150,7 @@ function persistCurrentLayout(): void {
     activeLeftTab: activeLeftTab.value,
     activeRightTab: activeRightTab.value,
     floatingPanels: [...floatingPanels.value],
+    collapsedPanels: [...collapsedPanels.value],
   };
   saveUserLayout(userId, data);
 }
@@ -188,6 +192,7 @@ effect(() => {
       rightSidebarOpen.value = reconciled.rightOpen;
       panelDocks.value = reconciled.panelDocks;
       floatingPanels.value = reconciled.floatingPanels;
+      collapsedPanels.value = reconciled.collapsedPanels ?? [];
       activeLeftTab.value = reconciled.activeLeftTab;
       activeRightTab.value = reconciled.activeRightTab;
       for (const fId of reconciled.floatingPanels) {
@@ -254,6 +259,13 @@ export function selectRightTab(id: string): void {
     activeRightTab.value = id;
     rightSidebarOpen.value = true;
   }
+  persistCurrentLayout();
+}
+
+export function toggleCollapse(panelId: string): void {
+  collapsedPanels.value = collapsedPanels.value.includes(panelId)
+    ? collapsedPanels.value.filter((id) => id !== panelId)
+    : [...collapsedPanels.value, panelId];
   persistCurrentLayout();
 }
 

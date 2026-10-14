@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @import "./webfont.css";
 
 @font-face {
@@ -96,4 +97,87 @@ body {
 .custom-scroll::-webkit-scrollbar-thumb:hover,
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.32);
+}
+/*  cropper.js, dressed for the host theme. Only the noise goes: the dashed
+    guides, the resize handles, and the crop box's own border — the picker's
+    window IS that box (same side, same centre), so leaving cropper's border on
+    drew a second square just inside the real one. Scoped to .image-cropper so
+    nothing else inherits it. */
+.image-cropper .cropper-dashed {
+  display: none;
+}
+.image-cropper .cropper-point {
+  display: none;
+}
+.image-cropper .cropper-container {
+  background: transparent;
+}
+.image-cropper .cropper-view-box,
+.image-cropper .cropper-face {
+  border: 0;
+  outline: 0;
+}
+
+/*  Native, stylable <select>. base-select hands both the closed control and the
+    open picker over to us, so a themed chevron and a themed dropdown are CSS,
+    not a wrapper div with a listbox bolted on top.
+    ponytail: `appearance: base-select` is unknown outside Chrome 135+, where
+    the declaration is dropped and the UA control comes back — that is why the
+    arrow is a background-image and NOT the native one being covered. Browsers
+    without it show two arrows; gate the whole block on @supports when that
+    starts to matter. */
+.custom-select,
+.custom-select::picker(select) {
+  appearance: base-select;
+}
+
+.custom-select {
+  color-scheme: dark;
+  padding-inline-end: 1.75rem;
+  cursor: pointer;
+  /* chevron, inline so there is no extra request */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%23e7e9ee' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 0.625rem;
+}
+.custom-select:hover:not(:disabled) {
+  border-color: rgb(255 255 255 / 0.2);
+}
+.custom-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The open dropdown is a top-layer box: it does NOT inherit the select's
+   background, so both it and every option are painted or they come out white. */
+.custom-select::picker(select) {
+  background: #181a1f;
+  color: #e7e9ee;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+  margin-block-start: 0.25rem;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.55);
+}
+.custom-select option {
+  background: #181a1f;
+  color: #e7e9ee;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.custom-select option:hover,
+.custom-select option:focus-visible {
+  background: #262a33;
+  color: #fff;
+}
+.custom-select option:checked {
+  background: var(--color-accent);
+  color: #0a0c0e;
+  font-weight: 600;
+}
+.custom-select option:disabled {
+  color: rgb(231 233 238 / 0.35);
 }

@@ -59,7 +59,7 @@ export function TopBar() {
               <select
                 value={gmCameraSceneId.value}
                 onChange={onCameraSelect}
-                class="rounded border border-white/10 bg-black/40 px-2 py-0.5 text-xs text-white outline-none focus:border-[var(--color-accent)]"
+                class="custom-select rounded border border-white/10 bg-black/40 px-2 py-0.5 text-xs text-white outline-none focus:border-[var(--color-accent)]"
               >
                 {sceneOptions.map((s) => (
                   <option key={s.id} value={s.id}>

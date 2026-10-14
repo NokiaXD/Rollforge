@@ -1,11 +1,27 @@
 import { type ComponentChildren } from "preact";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { clampPosition } from "./windowFrameUtils";
+import { clampPosition, computeResizeRect, type ResizeDir } from "./windowFrameUtils";
+
+/**
+ * Eight 8px grips on the frame edges/corners. Corners render last so they win
+ * the overlap against the edges. 12px wide strips, 14px corner squares.
+ */
+const RESIZE_GRIPS: readonly { dir: ResizeDir; className: string; cursor: string }[] = [
+  { dir: "n", className: "-top-1 left-2 right-2 h-2", cursor: "cursor-ns-resize" },
+  { dir: "s", className: "-bottom-1 left-2 right-2 h-2", cursor: "cursor-ns-resize" },
+  { dir: "w", className: "-left-1 top-2 bottom-2 w-2", cursor: "cursor-ew-resize" },
+  { dir: "e", className: "-right-1 top-2 bottom-2 w-2", cursor: "cursor-ew-resize" },
+  { dir: "ne", className: "-top-1 -right-1 h-3 w-3", cursor: "cursor-nesw-resize" },
+  { dir: "nw", className: "-top-1 -left-1 h-3 w-3", cursor: "cursor-nwse-resize" },
+  { dir: "se", className: "-bottom-1 -right-1 h-3 w-3", cursor: "cursor-nwse-resize" },
+  { dir: "sw", className: "-bottom-1 -left-1 h-3 w-3", cursor: "cursor-nesw-resize" },
+];
 
 export interface WindowFrameProps {
   title: ComponentChildren;
   subtitle?: string;
-  icon?: string;
+  /** Rendered node, not a string: nerd-font panel icons are CSS classes. */
+  icon?: ComponentChildren;
   children: ComponentChildren;
   onClose: () => void;
   backdrop?: "dark" | "none";
@@ -13,8 +29,12 @@ export interface WindowFrameProps {
   initialY?: number;
   initialWidth?: number;
   allowMaximize?: boolean;
+  /** Collapses the window to just its header (floating panels). */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   closeOnEscape?: boolean;
-  headerActions?: ComponentChildren;
+  /** The header is also a drag handle for this window's owner (floating panels). */
+  onHeaderPointerDown?: (e: PointerEvent) => void;
   onFocus?: () => void;
   zIndex?: number;
 }
@@ -30,8 +50,10 @@ export function WindowFrame({
   initialY = 60,
   initialWidth = 440,
   allowMaximize = true,
+  collapsed = false,
+  onToggleCollapse,
   closeOnEscape = true,
-  headerActions,
+  onHeaderPointerDown,
   onFocus,
   zIndex,
 }: WindowFrameProps) {
@@ -66,6 +88,17 @@ export function WindowFrame({
   const prevPosRef = useRef({ x: initialX, y: initialY });
   const isDraggingRef = useRef(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+
+  // Edge/corner resize. null = driven by content, as before.
+  // ponytail: session-only; persisting it is 3 lines in layoutTransitions if wanted.
+  const [customHeight, setCustomHeight] = useState<number | null>(null);
+  const [customWidth, setCustomWidth] = useState<number | null>(null);
+  const resizeRef = useRef<
+    { dir: ResizeDir; x: number; y: number; w: number; h: number } | null
+  >(null);
+
+  const MIN_FRAME_HEIGHT = 160;
+  const MIN_FRAME_WIDTH = 240;
 
   // Focus container on mount for immediate keyboard navigation
   useEffect(() => {
@@ -124,6 +157,8 @@ export function WindowFrame({
       return;
     }
 
+    onHeaderPointerDown?.(e);
+
     isDraggingRef.current = true;
     dragOffsetRef.current = {
       x: e.clientX - pos.x,
@@ -167,6 +202,53 @@ export function WindowFrame({
       } catch {
         // Ignore
       }
+    }
+  };
+
+  const handleResizePointerDown = (e: PointerEvent, dir: ResizeDir) => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    resizeRef.current = { dir, x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if pointer capture fails
+    }
+  };
+
+  const handleResizePointerMove = (e: PointerEvent) => {
+    const st = resizeRef.current;
+    if (!st) return;
+    // n/w handles drag away from the bottom-right anchor, the rest toward it.
+    const dx = st.dir.includes("w")
+      ? e.clientX - st.x
+      : e.clientX - (st.x + st.w);
+    const dy = st.dir.includes("n")
+      ? e.clientY - st.y
+      : e.clientY - (st.y + st.h);
+    const r = computeResizeRect(
+      { x: st.x, y: st.y, w: st.w, h: st.h },
+      { dx, dy },
+      st.dir,
+      {
+        minWidth: MIN_FRAME_WIDTH,
+        minHeight: MIN_FRAME_HEIGHT,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      },
+    );
+    if (r.x !== st.x || r.y !== st.y) setPos({ x: r.x, y: r.y });
+    if (r.w !== st.w) setCustomWidth(r.w);
+    if (r.h !== st.h) setCustomHeight(r.h);
+  };
+
+  const handleResizePointerUp = (e: PointerEvent) => {
+    if (!resizeRef.current) return;
+    resizeRef.current = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
     }
   };
 
@@ -234,7 +316,8 @@ export function WindowFrame({
         position: "fixed" as const,
         left: `${pos.x}px`,
         top: `${pos.y}px`,
-        width: `${initialWidth}px`,
+        width: `${customWidth ?? initialWidth}px`,
+        height: customHeight !== null ? `${customHeight}px` : undefined,
         zIndex: zIndex ?? 30,
       };
 
@@ -293,7 +376,16 @@ export function WindowFrame({
             </div>
           </div>
           <div class="flex items-center gap-1">
-            {headerActions}
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                class="rounded p-1 text-muted hover:bg-white/10 hover:text-white transition-colors"
+                title={collapsed ? "Expandir" : "Colapsar a la cabecera"}
+              >
+                {collapsed ? "▴" : "▾"}
+              </button>
+            )}
             {allowMaximize && !isSmallScreen && (
               <button
                 type="button"
@@ -314,7 +406,21 @@ export function WindowFrame({
             </button>
           </div>
         </header>
-        <div class="custom-scroll flex-1 overflow-y-auto">{children}</div>
+        {!collapsed && (
+          <div class="custom-scroll flex-1 overflow-y-auto">{children}</div>
+        )}
+        {!collapsed && !isMaximized && RESIZE_GRIPS.map(({ dir, className, cursor }) => (
+          <div
+            key={dir}
+            onPointerDown={(e) => handleResizePointerDown(e, dir)}
+            onPointerMove={handleResizePointerMove}
+            onPointerUp={handleResizePointerUp}
+            onPointerCancel={handleResizePointerUp}
+            onLostPointerCapture={handleResizePointerUp}
+            class={`absolute z-20 ${className} ${cursor} select-none`}
+            style={{ touchAction: "none" }}
+          />
+        ))}
       </div>
     </div>
   );

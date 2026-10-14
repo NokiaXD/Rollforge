@@ -125,7 +125,7 @@ export function GmUsersModal() {
                   value={selected}
                   onChange={(e) => setSelected((e.target as HTMLSelectElement).value)}
                   disabled={busy}
-                  class="rounded border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-accent"
+                  class="custom-select rounded border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-accent"
                 >
                   <option value="">— Seleccionar usuario —</option>
                   {usersSignal.value.map((u) => (

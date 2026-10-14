@@ -19,12 +19,14 @@ import { RightSidebar } from "./layout/RightSidebar";
 import { StatusBar } from "./layout/StatusBar";
 import { toggleChat } from "../state/chat";
 import { toggleLeftSidebar, toggleRightSidebar } from "../state/layout";
+import { showCenterDropHint } from "../state/panelDrag";
 import { ToastContainer } from "./ToastContainer";
 import { GmUsersModal } from "./GmUsersModal";
 import { SettingsModal } from "./SettingsModal";
 import { SceneFormModal } from "./SceneFormModal";
 import { FolderFormModal } from "./FolderFormModal";
 import { FolderDeleteModal } from "./FolderDeleteModal";
+import { ExtensionModals } from "./ExtensionModal";
 import { ContextMenu } from "./ContextMenu";
 import { SheetModal } from "./SheetModal";
 import { FloatingPanels } from "./FloatingPanels";
@@ -210,6 +212,13 @@ export function App() {
 
           {/* Área central transparente passthrough para interactuar directamente con el canvas */}
           <div class="flex-1 h-full pointer-events-none relative">
+            {showCenterDropHint.value && (
+              <div class="pointer-events-none absolute inset-3 flex items-center justify-center rounded-xl border-2 border-dashed border-accent/70 bg-accent/5">
+                <span class="rounded bg-accent/90 px-3 py-1 text-xs font-semibold text-white">
+                  Soltar para abrir como ventana
+                </span>
+              </div>
+            )}
             {lastError.value && (
               <div
                 role="alert"
@@ -240,6 +249,7 @@ export function App() {
       <FolderFormModal />
       <FolderDeleteModal />
       <ContextMenu />
+      <ExtensionModals />
       <FloatingPanels />
       <SheetModal />
       <ToastContainer />

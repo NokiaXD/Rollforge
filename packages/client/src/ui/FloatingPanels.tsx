@@ -1,12 +1,15 @@
 import { useRef } from "preact/hooks";
 import {
   renderedFloatingPanelIds,
-  dockFloating,
+  collapsedPanels,
   closeFloatingPanel,
+  toggleCollapse,
 } from "../state/layout";
+import { startPanelDrag } from "../state/panelDrag";
 import { focusWindow, windowFocusOrder } from "../state/ui";
 import { listPanels, panelEntries } from "../extensions/clientPanels";
 import { WindowFrame } from "./WindowFrame";
+import { Icon } from "./layout/ActivityBar";
 import {
   calculateCascadePosition,
   calculateWindowZIndex,
@@ -38,38 +41,19 @@ function FloatingPanelWindow({ id }: { id: string }) {
   const distanceFromTop = getWindowDistanceFromTop(windowFocusOrder.value, `panel:${id}`);
   const zIndex = calculateWindowZIndex(distanceFromTop);
 
-  const headerActions = (
-    <div class="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => dockFloating(id, "left")}
-        title="Acoplar a la barra izquierda"
-        class="rounded p-1 text-[11px] text-muted hover:bg-white/10 hover:text-white transition-colors"
-      >
-        ⮌
-      </button>
-      <button
-        type="button"
-        onClick={() => dockFloating(id, "right")}
-        title="Acoplar a la barra derecha"
-        class="rounded p-1 text-[11px] text-muted hover:bg-white/10 hover:text-white transition-colors"
-      >
-        ⮎
-      </button>
-    </div>
-  );
-
   return (
     <WindowFrame
       title={entry.panel.title}
-      icon={entry.panel.icon}
+      icon={<Icon icon={entry.panel.icon ?? "nf-cod-window"} class="text-base" />}
       backdrop="none"
       initialX={initialPos.current.x}
       initialY={initialPos.current.y}
       initialWidth={360}
       zIndex={zIndex}
       closeOnEscape={false}
-      headerActions={headerActions}
+      collapsed={collapsedPanels.value.includes(id)}
+      onToggleCollapse={() => toggleCollapse(id)}
+      onHeaderPointerDown={(e) => startPanelDrag(id, e)}
       onFocus={() => focusWindow(`panel:${id}`)}
       onClose={() => closeFloatingPanel(id)}
     >

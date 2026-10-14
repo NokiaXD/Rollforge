@@ -12,6 +12,11 @@ export interface LayoutStateData {
   activeLeftTab: string | null;
   activeRightTab: string | null;
   floatingPanels: string[];
+  /**
+   * Floating panels collapsed to just their header. Optional so the version stays
+   * at 1: bumping it would invalidate every saved layout, and this is one flag.
+   */
+  collapsedPanels?: string[];
 }
 
 export interface PanelMeta {
@@ -229,6 +234,8 @@ export function reconcileSavedLayout(
   }
 
   const floating = Array.from(new Set(saved.floatingPanels ?? []));
+  // A collapsed panel only makes sense while it is floating.
+  const collapsed = (saved.collapsedPanels ?? []).filter((id) => floating.includes(id));
 
   const validActiveLeft = effectiveActiveTab(
     mergedDocks,
@@ -249,6 +256,7 @@ export function reconcileSavedLayout(
     ...saved,
     panelDocks: mergedDocks,
     floatingPanels: floating,
+    collapsedPanels: collapsed,
     activeLeftTab: validActiveLeft,
     activeRightTab: validActiveRight,
     leftOpen: saved.leftOpen && validActiveLeft !== null,
@@ -332,9 +340,17 @@ export function parseSavedLayout(raw: string | null): LayoutStateData | null {
       floatingPanels = Array.from(new Set(data.floatingPanels as string[]));
     }
 
+    let collapsedPanels: string[] = [];
+    if (data.collapsedPanels !== undefined) {
+      if (!Array.isArray(data.collapsedPanels)) return null;
+      if (!data.collapsedPanels.every((item: unknown) => typeof item === "string")) return null;
+      collapsedPanels = Array.from(new Set(data.collapsedPanels as string[]));
+    }
+
     return {
-      ...(data as Omit<LayoutStateData, "floatingPanels">),
+      ...(data as Omit<LayoutStateData, "floatingPanels" | "collapsedPanels">),
       floatingPanels,
+      collapsedPanels,
     };
   } catch {
     return null;

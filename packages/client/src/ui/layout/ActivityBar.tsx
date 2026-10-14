@@ -15,6 +15,7 @@ import {
   isLeftSidebarEffectiveOpen,
   selectLeftTab,
 } from "../../state/layout";
+import { startPanelDrag } from "../../state/panelDrag";
 
 export const isIconClass = (icon: string) => icon.startsWith("nf-");
 
@@ -84,8 +85,9 @@ export function ActivityBar() {
               key={item.panel.id}
               type="button"
               onClick={() => selectLeftTab(item.panel.id)}
+              onPointerDown={(e) => startPanelDrag(item.panel.id, e, true)}
               title={`${item.panel.title} (Ctrl+B)`}
-              class={`group relative flex h-10 w-10 items-center justify-center rounded-md transition-colors ${
+              class={`group relative flex h-10 w-10 cursor-grab items-center justify-center rounded-md transition-colors active:cursor-grabbing ${
                 isActive
                   ? "text-white bg-white/10"
                   : "text-muted hover:bg-white/5 hover:text-white"

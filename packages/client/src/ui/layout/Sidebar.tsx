@@ -6,10 +6,8 @@ import {
   setPreferredLeftSidebarWidth,
   resetLeftSidebarWidth,
   toggleLeftSidebar,
-  movePanel,
-  popOut,
-  canPopOut,
 } from "../../state/layout";
+import { panelDropZone, startPanelDrag } from "../../state/panelDrag";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 
 export function Sidebar() {
@@ -27,41 +25,27 @@ export function Sidebar() {
   return (
     <aside
       style={{ width: `${width}px` }}
-      class="pointer-events-auto relative flex shrink-0 flex-col border-r border-white/10 bg-[#181a1f]/95 backdrop-blur-md text-[#e7e9ee] shadow-2xl z-20"
+      class={`pointer-events-auto relative flex shrink-0 flex-col border-r border-white/10 bg-[#181a1f]/95 backdrop-blur-md text-[#e7e9ee] shadow-2xl z-20 ${
+        panelDropZone.value === "left" ? "ring-2 ring-inset ring-accent" : ""
+      }`}
     >
-      {/* Sidebar Header */}
-      <div class="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-3">
+      {/* Sidebar Header — drag to left / right / center is the only way to move it */}
+      <div
+        class="flex h-9 shrink-0 cursor-grab items-center justify-between border-b border-white/10 px-3 active:cursor-grabbing"
+        style={{ touchAction: "none" }}
+        onPointerDown={(e) => startPanelDrag(entry.panel.id, e)}
+      >
         <span class="text-[11px] font-semibold uppercase tracking-wider text-muted truncate">
           {entry.panel.title}
         </span>
-        <div class="flex items-center gap-1">
-          {canPopOut.value && (
-            <button
-              type="button"
-              onClick={() => popOut(entry.panel.id)}
-              title="Abrir como ventana flotante"
-              class="rounded p-1 text-[11px] text-muted hover:bg-white/10 hover:text-white transition-colors"
-            >
-              ↗
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => movePanel(entry.panel.id, "right")}
-            title="Mover panel a la barra derecha"
-            class="rounded p-1 text-[11px] text-muted hover:bg-white/10 hover:text-white transition-colors"
-          >
-            ➔
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleLeftSidebar()}
-            title="Colapsar barra lateral"
-            class="rounded p-1 text-muted hover:bg-white/10 hover:text-white transition-colors text-xs"
-          >
-            ✕
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => toggleLeftSidebar()}
+          title="Colapsar barra lateral"
+          class="rounded p-1 text-muted hover:bg-white/10 hover:text-white transition-colors text-xs"
+        >
+          ✕
+        </button>
       </div>
 
       {/* Sidebar Content View */}

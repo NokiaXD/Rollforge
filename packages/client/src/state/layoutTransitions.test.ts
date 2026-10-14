@@ -161,6 +161,44 @@ describe("layoutTransitions - parseSavedLayout with floatingPanels", () => {
   });
 });
 
+describe("layoutTransitions - collapsedPanels", () => {
+  const payload = (extra: Record<string, unknown>) =>
+    JSON.stringify({
+      version: 1,
+      preferredLeftWidth: 320,
+      preferredRightWidth: 320,
+      leftOpen: true,
+      rightOpen: true,
+      panelDocks: { scenes: "left", chat: "right" },
+      activeLeftTab: "scenes",
+      activeRightTab: "chat",
+      ...extra,
+    });
+
+  it("defaults to empty when omitted, so v1 payloads keep loading", () => {
+    expect(parseSavedLayout(payload({}))?.collapsedPanels).toEqual([]);
+  });
+
+  it("parses and deduplicates the list", () => {
+    const parsed = parseSavedLayout(payload({ collapsedPanels: ["chat", "chat", "tokens"] }));
+    expect(parsed?.collapsedPanels).toEqual(["chat", "tokens"]);
+  });
+
+  it("rejects non-string items", () => {
+    expect(parseSavedLayout(payload({ collapsedPanels: [1] }))).toBe(null);
+  });
+
+  it("drops collapsed ids that are not floating", () => {
+    const next = reconcileSavedLayout(
+      parseSavedLayout(payload({ floatingPanels: ["chat"], collapsedPanels: ["chat", "scenes"] }))!,
+      ["scenes", "tokens", "chat"],
+      ["scenes", "tokens", "chat"],
+      { scenes: "left", tokens: "left", chat: "right" },
+    );
+    expect(next.collapsedPanels).toEqual(["chat"]);
+  });
+});
+
 describe("layoutTransitions - docking and viewport threshold rules", () => {
   it("docking to a collapsed sidebar opens it and activates the panel", () => {
     const state: LayoutStateData = {

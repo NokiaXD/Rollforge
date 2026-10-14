@@ -164,7 +164,7 @@ function SceneForm({
             <select
               value={gridType}
               onChange={(e) => setGridType((e.target as HTMLSelectElement).value as "square" | "hex")}
-              class="rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
+              class="custom-select rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
             >
               <option value="square">Square</option>
               <option value="hex">Hex</option>
@@ -177,7 +177,7 @@ function SceneForm({
               <select
                 value={units}
                 onChange={(e) => setUnits((e.target as HTMLSelectElement).value as "ft" | "m")}
-                class="rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
+                class="custom-select rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
               >
                 <option value="ft">Feet (ft)</option>
                 <option value="m">Metres (m)</option>
@@ -293,7 +293,7 @@ function FolderSelect({
       <select
         value={value ?? ""}
         onChange={(e) => onChange(((e.target as HTMLSelectElement).value) || null)}
-        class="rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
+        class="custom-select rounded border border-white/10 bg-black/40 px-2.5 py-1 text-xs text-white outline-none focus:border-accent"
       >
         <option value="">— Sin carpeta —</option>
         {folders

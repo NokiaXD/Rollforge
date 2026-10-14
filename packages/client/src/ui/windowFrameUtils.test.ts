@@ -4,11 +4,78 @@ import {
   calculateWindowZIndex,
   clampPosition,
   closeWindowState,
+  computeResizeRect,
   focusWindowState,
   getWindowDistanceFromTop,
   getWindowRank,
   openWindowState,
 } from "./windowFrameUtils";
+
+const LIMITS = {
+  minWidth: 240,
+  minHeight: 160,
+  viewportWidth: 1200,
+  viewportHeight: 800,
+};
+
+describe("windowFrameUtils - computeResizeRect", () => {
+  const start = { x: 100, y: 100, w: 400, h: 300 };
+
+  it("s/e only grow the box, origin never moves", () => {
+    expect(computeResizeRect(start, { dx: 50, dy: 40 }, "se", LIMITS)).toEqual({
+      x: 100,
+      y: 100,
+      w: 450,
+      h: 340,
+    });
+  });
+
+  it("w moves the left edge: dragging right shrinks and pushes x forward", () => {
+    expect(computeResizeRect(start, { dx: -50, dy: 0 }, "w", LIMITS)).toEqual({
+      x: 50,
+      y: 100,
+      w: 450,
+      h: 300,
+    });
+    expect(computeResizeRect(start, { dx: 50, dy: 0 }, "w", LIMITS)).toEqual({
+      x: 150,
+      y: 100,
+      w: 350,
+      h: 300,
+    });
+  });
+
+  it("n moves the top edge like w moves the left one", () => {
+    expect(computeResizeRect(start, { dx: 0, dy: 60 }, "n", LIMITS)).toEqual({
+      x: 100,
+      y: 160,
+      w: 400,
+      h: 240,
+    });
+  });
+
+  it("respects the minimum size on both axes", () => {
+    // dragging a nw handle inward (positive delta) shrinks from the top-left
+    const r = computeResizeRect(start, { dx: 9999, dy: 9999 }, "nw", LIMITS);
+    expect(r).toEqual({ x: 100 + 400 - 240, y: 100 + 300 - 160, w: 240, h: 160 });
+  });
+
+  it("cannot grow past the viewport from the right/bottom edges", () => {
+    const nearEdge = { x: 900, y: 600, w: 250, h: 100 };
+    const r = computeResizeRect(nearEdge, { dx: 5000, dy: 5000 }, "se", LIMITS);
+    expect(r.w).toBe(300);
+    expect(r.h).toBe(200);
+  });
+
+  it("ignores the axis the handle does not touch", () => {
+    expect(computeResizeRect(start, { dx: 60, dy: 60 }, "e", LIMITS)).toEqual({
+      x: 100,
+      y: 100,
+      w: 460,
+      h: 300,
+    });
+  });
+});
 
 describe("windowFrameUtils - clampPosition", () => {
   it("keeps window within normal viewport bounds", () => {

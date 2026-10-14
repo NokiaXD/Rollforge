@@ -6,7 +6,7 @@ import type { DiceResult, DiceRoll } from "@rollforge/protocol";
 
 function RollBreakdown({ result }: { result: DiceResult }) {
   return (
-    <div class="mt-1 space-y-1 text-xs">
+    <div class="mt-1 space-y-1 wrap-break-word text-xs">
       {result.terms.map((diceTerm, termIndex) => (
         <div key={termIndex}>
           <span class="text-muted">
@@ -26,7 +26,7 @@ function RollBreakdown({ result }: { result: DiceResult }) {
                 class={kept ? "text-emerald-300 font-semibold" : "text-red-400 line-through opacity-70"}
               >
                 {diceResult}
-                {diceaResultIndex < diceTerm.rolls.length - 1 ? <span class="text-white no-underline">,</span>  : ""}
+                {diceaResultIndex < diceTerm.rolls.length - 1 ? <span class="text-white no-underline">, </span> : ""}
               </span>
             );
           })}

@@ -7,13 +7,11 @@ import {
   resetRightSidebarWidth,
   toggleRightSidebar,
   selectRightTab,
-  movePanel,
   visiblePanels,
   panelDocks,
   effectiveFloatingPanels,
-  canPopOut,
-  popOut,
 } from "../../state/layout";
+import { panelDropZone, startPanelDrag } from "../../state/panelDrag";
 import { SidebarResizeHandle } from "./SidebarResizeHandle";
 import { Icon } from "./ActivityBar";
 
@@ -37,7 +35,9 @@ export function RightSidebar() {
   return (
     <aside
       style={{ width: `${width}px` }}
-      class="pointer-events-auto relative flex shrink-0 flex-col border-l border-white/10 bg-[#181a1f]/95 backdrop-blur-md text-[#e7e9ee] shadow-2xl z-20"
+      class={`pointer-events-auto relative flex shrink-0 flex-col border-l border-white/10 bg-[#181a1f]/95 backdrop-blur-md text-[#e7e9ee] shadow-2xl z-20 ${
+        panelDropZone.value === "right" ? "ring-2 ring-inset ring-accent" : ""
+      }`}
     >
       {/* Resizing Handle on Left Edge */}
       <SidebarResizeHandle
@@ -48,10 +48,13 @@ export function RightSidebar() {
         onReset={resetRightSidebarWidth}
       />
 
-      {/* Right Sidebar Header / Tab Bar */}
-      <div class="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-2 gap-2">
+      {/* Right Sidebar Header / Tab Bar — drag tabs to left / right / center */}
+      <div
+        class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-2"
+        style={{ touchAction: "none" }}
+      >
         {rightPanels.length > 1 ? (
-          <div class="flex items-center gap-1 overflow-x-auto min-w-0 flex-1">
+          <div class="flex min-w-0 flex-1 cursor-grab items-center gap-1 overflow-x-auto active:cursor-grabbing">
             {rightPanels.map((p) => {
               const isActive = p.panel.id === tab;
               return (
@@ -59,6 +62,7 @@ export function RightSidebar() {
                   key={p.panel.id}
                   type="button"
                   onClick={() => selectRightTab(p.panel.id)}
+                  onPointerDown={(e) => startPanelDrag(p.panel.id, e, true)}
                   title={p.panel.title}
                   class={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition-colors truncate ${
                     isActive
@@ -73,31 +77,16 @@ export function RightSidebar() {
             })}
           </div>
         ) : (
-          <div class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted truncate px-1">
+          <div
+            class="flex min-w-0 cursor-grab items-center gap-1.5 truncate px-1 text-[11px] font-semibold uppercase tracking-wider text-muted active:cursor-grabbing"
+            onPointerDown={(e) => startPanelDrag(entry.panel.id, e)}
+          >
             <Icon icon={entry.panel.icon ?? "nf-cod-window"} class="text-sm" />
             <span class="truncate">{entry.panel.title}</span>
           </div>
         )}
 
-        <div class="flex items-center gap-1 shrink-0">
-          {canPopOut.value && (
-            <button
-              type="button"
-              onClick={() => popOut(entry.panel.id)}
-              title="Abrir como ventana flotante"
-              class="rounded p-1 text-[11px] text-muted hover:bg-white/10 hover:text-white transition-colors"
-            >
-              ↗
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => movePanel(entry.panel.id, "left")}
-            title="Mover panel a la barra izquierda"
-            class="rounded p-1 text-[11px] text-muted hover:bg-white/10 hover:text-white transition-colors"
-          >
-            ⬅
-          </button>
+        <div class="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => toggleRightSidebar()}

@@ -7,7 +7,9 @@ import type { Viewport } from "pixi-viewport";
 import type { Document } from "@rollforge/protocol";
 import { registerSheet, setOwnerMap } from "./clientSheets";
 import { registerPanel, registerCorePanel } from "./clientPanels";
+import { openModal as hostOpenModal, closeModal as hostCloseModal } from "./clientModals";
 import { CustomActorSheet } from "./builtins/customActorSheet";
+import { ImagePicker } from "../ui/ImagePicker";
 import { ScenesView } from "../ui/views/ScenesView";
 import { TokensView } from "../ui/views/TokensView";
 import { ChatView } from "../ui/views/ChatView";
@@ -18,7 +20,7 @@ import { getViewport, onViewportReady } from "../canvas/currentViewport";
 import { httpPatchDocument, httpPostDocument } from "./documentTransport";
 import { fetchDocumentTypes } from "../state/extensionSources";
 import { currentUser, fetchMe, authStatus } from "../state/auth";
-import { openDocument } from "../state/ui";
+import { openContextMenu, openDocument } from "../state/ui";
 import { loadClientExtensions } from "./extensionLoader";
 import { addToast } from "../state/toasts";
 
@@ -111,6 +113,23 @@ export function buildClientAPI(extensionId: string = "client-extension"): Client
       //  and fetches the document itself if the store does not have it.
       openDocument: (id: string) => {
         openDocument(id);
+      },
+      //  Floating window in the host's WindowFrame shell; ExtensionModal owns it.
+      openModal: (opts) => {
+        hostOpenModal({ id: opts.id, modal: opts, api });
+      },
+      closeModal: (id: string) => {
+        hostCloseModal(id);
+      },
+      //  Shared by every extension: read a File into a token-shaped data URL.
+      //  Bound here because the picker opens the cropper through the host's
+      //  modal registry, which needs the api of the extension asking for it.
+      imagePicker: (props) => <ImagePicker {...props} api={api} />,
+      //  The core's ContextMenu, same renderer the Actores view uses. The item
+      //  shape is ClientContextMenuItem, a copy of the core's, so it needs no
+      //  adapter here.
+      openContextMenu: (pos, items) => {
+        openContextMenu({ clientX: pos.x, clientY: pos.y }, [...items]);
       },
       //  The host's preact, so a raw-served extension file never has to import
       //  it (see ClientPreactAPI: the import map gives it a second instance).

@@ -30,6 +30,61 @@ export function clampPosition(
 }
 
 /**
+ * Resize handle directions: which edges the handle sits on.
+ * West/North handles move the window origin instead of only growing the box.
+ */
+export type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+export const RESIZE_DIRS: readonly ResizeDir[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+
+export interface RectGeometry {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface ResizeLimits {
+  minWidth: number;
+  minHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}
+
+/**
+ * Pure resize math: applies a pointer delta to a starting rect for one handle
+ * direction. West/North move the origin so that edge stays under the cursor.
+ */
+export function computeResizeRect(
+  start: RectGeometry,
+  delta: { dx: number; dy: number },
+  dir: ResizeDir,
+  limits: ResizeLimits,
+): RectGeometry {
+  const growsRight = dir.includes("e");
+  const growsLeft = dir.includes("w");
+  const growsDown = dir.includes("s");
+  const growsUp = dir.includes("n");
+
+  let w = start.w + (growsRight ? delta.dx : growsLeft ? -delta.dx : 0);
+  let h = start.h + (growsDown ? delta.dy : growsUp ? -delta.dy : 0);
+
+  // Right/bottom cannot push past the viewport. West/north grow the box the other
+  // way, so only the minimum bounds them; clampPosition pulls them back on screen.
+  const maxW = growsLeft ? Infinity : Math.max(limits.minWidth, limits.viewportWidth - start.x);
+  const maxH = growsUp ? Infinity : Math.max(limits.minHeight, limits.viewportHeight - start.y);
+  w = Math.max(limits.minWidth, Math.min(w, maxW));
+  h = Math.max(limits.minHeight, Math.min(h, maxH));
+
+  return {
+    x: growsLeft ? start.x + (start.w - w) : start.x,
+    y: growsUp ? start.y + (start.h - h) : start.y,
+    w,
+    h,
+  };
+}
+
+/**
  * Calculates a cascading initial position for opening windows.
  */
 export function calculateCascadePosition(
