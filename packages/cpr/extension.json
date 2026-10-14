@@ -1,0 +1,31 @@
+{
+  "id": "cpr",
+  "name": "Cyberpunk RED",
+  "version": "0.1.0",
+  "engines": {
+    "core": ">=0.1.0"
+  },
+  "activationEvents": [
+    "onReady"
+  ],
+  "contributes": {
+    "documentTypes": [
+      {
+        "id": "cpr-character",
+        "base": "Actor",
+        "schemaVersion": 2
+      }
+    ],
+    "sheets": [
+      {
+        "documentType": "cpr-character",
+        "component": "CharacterSheet",
+        "default": true
+      }
+    ]
+  },
+  "main": {
+    "server": "src/main.server.js",
+    "client": "dist/main.client.js"
+  }
+}

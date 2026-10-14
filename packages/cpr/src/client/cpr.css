@@ -1,0 +1,1239 @@
+/* ==========================================================================
+   Cyberpunk RED Extension Stylesheet
+   Self-contained, host-agnostic, container-query responsive, zero Tailwind leaks.
+   ========================================================================== */
+
+.cpr-root {
+  /* Design Tokens — scoped to CPR root, never leaked to :root */
+  --cpr-bg: #090b0e;
+  --cpr-surface-header: #0c0e13;
+  --cpr-surface: #11131a;
+  --cpr-surface-card: #12141c;
+  --cpr-surface-subtle: #161822;
+  --cpr-surface-hover: #1b1e2b;
+  --cpr-surface-inset: rgba(0, 0, 0, 0.45);
+  --cpr-input-bg: rgba(0, 0, 0, 0.55);
+
+  --cpr-border: rgba(255, 255, 255, 0.06);
+  --cpr-border-subtle: rgba(255, 255, 255, 0.04);
+  --cpr-border-hover: rgba(255, 255, 255, 0.12);
+  --cpr-border-focus: #ff003c;
+
+  --cpr-accent: #ff003c;
+  --cpr-accent-hover: #ff1a4f;
+  --cpr-accent-subtle: rgba(255, 0, 60, 0.15);
+  --cpr-accent-glow: 0 0 14px rgba(255, 0, 60, 0.35);
+
+  --cpr-cyan: #22d3ee;
+  --cpr-cyan-subtle: rgba(34, 211, 238, 0.15);
+  --cpr-amber: #fbbf24;
+  --cpr-amber-subtle: rgba(251, 191, 36, 0.15);
+  --cpr-emerald: #34d399;
+  --cpr-emerald-subtle: rgba(52, 211, 153, 0.15);
+  --cpr-red: #f87171;
+  --cpr-red-subtle: rgba(248, 113, 113, 0.15);
+
+  --cpr-text: #f3f4f6;
+  --cpr-text-muted: #9ca3af;
+  --cpr-text-dim: #6b7280;
+
+  --cpr-font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --cpr-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Container query context on root: responsive to the floating window width */
+  container-type: inline-size;
+  container-name: cpr-window;
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--cpr-bg);
+  color: var(--cpr-text);
+  font-family: var(--cpr-font-sans);
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.cpr-root *,
+.cpr-root *::before,
+.cpr-root *::after {
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   Container-Query Responsive Grids & Layout Containers
+   ========================================================================== */
+
+.cpr-container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.cpr-container-narrow {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* Responsive Split Layout (Sidebar Dossier + Main Workbench) */
+.cpr-split {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@container cpr-window (min-width: 740px) {
+  .cpr-split {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.cpr-aside {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+@container cpr-window (min-width: 740px) {
+  .cpr-aside {
+    width: 290px;
+    position: sticky;
+    top: 3.5rem;
+  }
+}
+
+@container cpr-window (min-width: 1020px) {
+  .cpr-aside {
+    width: 330px;
+  }
+}
+
+.cpr-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* 2-Column Responsive Grid */
+.cpr-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.875rem;
+}
+
+@container cpr-window (min-width: 580px) {
+  .cpr-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 3-Column Responsive Grid */
+.cpr-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@container cpr-window (min-width: 480px) {
+  .cpr-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container cpr-window (min-width: 680px) {
+  .cpr-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* 4-Column Responsive Grid */
+.cpr-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@container cpr-window (min-width: 680px) {
+  .cpr-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Auto-fitting Stat Grid */
+.cpr-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 0.75rem;
+}
+
+/* ==========================================================================
+   Header, Telemetry Stepper & Sticky Navigation
+   ========================================================================== */
+
+.cpr-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--cpr-surface-header);
+  border-bottom: 1px solid var(--cpr-border);
+  flex-shrink: 0;
+}
+
+.cpr-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.cpr-pulse-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--cpr-accent);
+  box-shadow: 0 0 8px var(--cpr-accent);
+  animation: cpr-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes cpr-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.cpr-header-telemetry {
+  display: none;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.625rem;
+  color: var(--cpr-text-muted);
+}
+
+@container cpr-window (min-width: 580px) {
+  .cpr-header-telemetry {
+    display: inline-block;
+  }
+}
+
+.cpr-stepper-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.cpr-stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--cpr-text-dim);
+  cursor: default;
+  transition: all 0.15s ease;
+  min-height: 30px;
+}
+
+.cpr-stepper-btn.active {
+  background-color: var(--cpr-accent);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: var(--cpr-accent-glow);
+}
+
+.cpr-stepper-btn.done {
+  background-color: var(--cpr-surface-subtle);
+  color: var(--cpr-cyan);
+  cursor: pointer;
+  border-color: var(--cpr-border);
+}
+
+.cpr-stepper-btn.done:hover {
+  background-color: var(--cpr-surface-hover);
+  color: #fff;
+}
+
+.cpr-stepper-btn:focus-visible {
+  outline: 2px solid var(--cpr-accent);
+  outline-offset: 1px;
+}
+
+/* ==========================================================================
+   Surfaces, Cards, Sections
+   ========================================================================== */
+
+.cpr-workbench {
+  flex: 1;
+  padding: 1rem;
+}
+
+@container cpr-window (min-width: 680px) {
+  .cpr-workbench {
+    padding: 1.25rem 1.5rem;
+  }
+}
+
+.cpr-card {
+  background-color: var(--cpr-surface);
+  border: 1px solid var(--cpr-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+@container cpr-window (min-width: 600px) {
+  .cpr-card {
+    padding: 1.25rem;
+  }
+}
+
+.cpr-card-subtle {
+  background-color: var(--cpr-surface-card);
+  border: 1px solid var(--cpr-border-subtle);
+  border-radius: 0.5rem;
+  padding: 0.875rem;
+}
+
+.cpr-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--cpr-border);
+  padding-bottom: 0.625rem;
+  margin-bottom: 0.875rem;
+}
+
+.cpr-card-title {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cpr-text);
+  margin: 0;
+}
+
+.cpr-card-title-accent {
+  color: var(--cpr-accent);
+}
+
+.cpr-card-tag {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.5625rem;
+  color: var(--cpr-text-dim);
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+   Forms, Inputs, Labels
+   ========================================================================== */
+
+.cpr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.cpr-label {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cpr-text-muted);
+}
+
+.cpr-required {
+  color: var(--cpr-accent);
+  margin-left: 0.125rem;
+}
+
+.cpr-input {
+  width: 100%;
+  background-color: var(--cpr-input-bg);
+  border: 1px solid var(--cpr-border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: var(--cpr-font-sans);
+  color: #fff;
+  outline: none;
+  min-height: 34px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cpr-input::placeholder {
+  color: var(--cpr-text-dim);
+}
+
+.cpr-input:hover:not(:disabled) {
+  border-color: var(--cpr-border-hover);
+}
+
+.cpr-input:focus {
+  border-color: var(--cpr-border-focus);
+  background-color: rgba(0, 0, 0, 0.75);
+  box-shadow: 0 0 0 1px rgba(255, 0, 60, 0.25);
+}
+
+.cpr-input:focus-visible {
+  outline: 2px solid var(--cpr-accent);
+  outline-offset: 1px;
+}
+
+.cpr-input:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cpr-textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.cpr-select {
+  cursor: pointer;
+  appearance: none;
+}
+
+/* ==========================================================================
+   Buttons & Interactive Controls
+   ========================================================================== */
+
+.cpr-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  padding: 0.5rem 1.25rem;
+  background-color: var(--cpr-accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+  cursor: pointer;
+  box-shadow: var(--cpr-accent-glow);
+  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  min-height: 34px;
+}
+
+.cpr-btn-primary:hover:not(:disabled) {
+  background-color: var(--cpr-accent-hover);
+  box-shadow: 0 0 18px rgba(255, 0, 60, 0.5);
+}
+
+.cpr-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.cpr-btn-primary:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.cpr-btn-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.cpr-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: 0.375rem;
+  padding: 0.4375rem 0.875rem;
+  background-color: var(--cpr-surface-subtle);
+  color: var(--cpr-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--cpr-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 34px;
+}
+
+.cpr-btn-secondary:hover:not(:disabled) {
+  background-color: var(--cpr-surface-hover);
+  color: #fff;
+  border-color: var(--cpr-border-hover);
+}
+
+.cpr-btn-secondary:focus-visible {
+  outline: 2px solid var(--cpr-cyan);
+  outline-offset: 1px;
+}
+
+.cpr-btn-secondary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cpr-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  color: var(--cpr-red);
+  font-family: var(--cpr-font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cpr-btn-danger:hover:not(:disabled) {
+  background-color: var(--cpr-red-subtle);
+}
+
+.cpr-btn-danger:focus-visible {
+  outline: 2px solid var(--cpr-red);
+  outline-offset: 1px;
+}
+
+.cpr-btn-icon {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  background-color: var(--cpr-surface-subtle);
+  border: 1px solid var(--cpr-border);
+  font-family: var(--cpr-font-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--cpr-text-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.12s ease;
+}
+
+.cpr-btn-icon:hover:not(:disabled) {
+  background-color: var(--cpr-surface-hover);
+  border-color: var(--cpr-border-hover);
+  color: #fff;
+}
+
+.cpr-btn-icon:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.cpr-btn-icon:focus-visible {
+  outline: 2px solid var(--cpr-cyan);
+  outline-offset: 1px;
+}
+
+.cpr-btn-icon:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Stat Tiles (Characteristics)
+   ========================================================================== */
+
+.cpr-stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  padding: 0.625rem;
+  background-color: var(--cpr-surface-inset);
+  border: 1px solid var(--cpr-border);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.cpr-stat-tile:hover {
+  border-color: var(--cpr-border-hover);
+  background-color: var(--cpr-surface-subtle);
+}
+
+.cpr-stat-tile-legendary {
+  background-color: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.25);
+}
+
+.cpr-stat-tile-high {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--cpr-border-hover);
+}
+
+.cpr-stat-abbr {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--cpr-text-muted);
+}
+
+.cpr-stat-tile-legendary .cpr-stat-abbr {
+  color: var(--cpr-amber);
+}
+
+.cpr-stat-val {
+  font-family: var(--cpr-font-mono);
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fff;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.cpr-stat-tile-legendary .cpr-stat-val {
+  color: var(--cpr-amber);
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.4);
+}
+
+.cpr-stat-tile-high .cpr-stat-val {
+  color: var(--cpr-amber);
+}
+
+.cpr-stat-name {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.5625rem;
+  color: var(--cpr-text-dim);
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.cpr-stat-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.125rem 0;
+}
+
+/* ==========================================================================
+   Bio-Monitor HUD & Telemetry
+   ========================================================================== */
+
+.cpr-biomonitor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background-color: var(--cpr-surface);
+  border: 1px solid var(--cpr-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.cpr-biomonitor-compact {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  background-color: var(--cpr-surface);
+  border: 1px solid var(--cpr-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+@container cpr-window (min-width: 580px) {
+  .cpr-biomonitor-compact {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.cpr-biomonitor-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 0.625rem;
+  border-radius: 0.375rem;
+  background-color: var(--cpr-surface-inset);
+}
+
+.cpr-biomonitor-tile-label {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cpr-text-muted);
+}
+
+.cpr-biomonitor-tile-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  margin: 0.125rem 0;
+}
+
+.cpr-biomonitor-tile-num {
+  font-family: var(--cpr-font-mono);
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.cpr-biomonitor-tile-unit {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.625rem;
+  color: var(--cpr-text-dim);
+}
+
+.cpr-biomonitor-tile-sub {
+  font-size: 0.5625rem;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Budget Bars
+   ========================================================================== */
+
+.cpr-budget-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.cpr-budget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cpr-budget-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--cpr-text-muted);
+}
+
+.cpr-budget-count {
+  font-family: var(--cpr-font-mono);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.cpr-budget-track {
+  height: 0.375rem;
+  width: 100%;
+  border-radius: 9999px;
+  background-color: var(--cpr-surface-subtle);
+  overflow: hidden;
+}
+
+.cpr-budget-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+/* ==========================================================================
+   Badges, Pills & Status Tags
+   ========================================================================== */
+
+.cpr-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cpr-badge-red {
+  background-color: var(--cpr-accent-subtle);
+  color: var(--cpr-accent);
+}
+
+.cpr-badge-cyan {
+  background-color: var(--cpr-cyan-subtle);
+  color: var(--cpr-cyan);
+}
+
+.cpr-badge-amber {
+  background-color: var(--cpr-amber-subtle);
+  color: var(--cpr-amber);
+}
+
+.cpr-badge-emerald {
+  background-color: var(--cpr-emerald-subtle);
+  color: var(--cpr-emerald);
+}
+
+.cpr-badge-muted {
+  background-color: var(--cpr-surface-subtle);
+  color: var(--cpr-text-muted);
+}
+
+.cpr-pill-list {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: none;
+}
+
+.cpr-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  background-color: var(--cpr-surface-subtle);
+  color: var(--cpr-text-muted);
+  border: 1px solid var(--cpr-border);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+  min-height: 28px;
+}
+
+.cpr-pill:hover {
+  background-color: var(--cpr-surface-hover);
+  color: #fff;
+}
+
+.cpr-pill.active {
+  background-color: var(--cpr-accent);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 700;
+  box-shadow: var(--cpr-accent-glow);
+}
+
+.cpr-pill:focus-visible {
+  outline: 2px solid var(--cpr-accent);
+  outline-offset: 1px;
+}
+
+/* ==========================================================================
+   Skills List & Rows
+   ========================================================================== */
+
+.cpr-skill-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.12s ease;
+}
+
+.cpr-skill-row:hover {
+  background-color: var(--cpr-surface-subtle);
+}
+
+.cpr-skill-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 140px;
+  flex: 1;
+}
+
+.cpr-skill-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.cpr-skill-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.cpr-skill-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.6875rem;
+}
+
+.cpr-base-badge {
+  border-radius: 0.25rem;
+  background-color: var(--cpr-surface-subtle);
+  padding: 0.125rem 0.5rem;
+  font-weight: 700;
+  color: var(--cpr-cyan);
+}
+
+.cpr-repeatable-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  border-radius: 0.5rem;
+  background-color: var(--cpr-surface-inset);
+  padding: 0.75rem;
+  border: 1px solid var(--cpr-border);
+}
+
+.cpr-repeatable-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--cpr-surface);
+  padding: 0.5rem;
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
+.cpr-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--cpr-surface-header);
+  border-top: 1px solid var(--cpr-border);
+  box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+@container cpr-window (min-width: 600px) {
+  .cpr-footer {
+    padding: 0.75rem 1.5rem;
+  }
+}
+
+.cpr-footer-telemetry {
+  display: none;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+@container cpr-window (min-width: 580px) {
+  .cpr-footer-telemetry {
+    display: block;
+  }
+}
+
+/* ==========================================================================
+   Sidebar Panel Components (Roster, Archetypes)
+   ========================================================================== */
+
+.cpr-panel-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  height: 100%;
+}
+
+.cpr-panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--cpr-border);
+}
+
+.cpr-panel-tab {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--cpr-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.cpr-panel-tab:hover {
+  color: #fff;
+}
+
+.cpr-panel-tab.active {
+  color: #fff;
+  border-bottom-color: var(--cpr-accent);
+}
+
+.cpr-character-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--cpr-border);
+  background-color: var(--cpr-surface-inset);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.cpr-character-row:hover {
+  background-color: var(--cpr-surface-subtle);
+  border-color: var(--cpr-border-hover);
+}
+
+/* ==========================================================================
+   CPR Utility Helpers (Scoped, Determinist, No Tailwind Dependency)
+   ========================================================================== */
+
+.cpr-flex { display: flex; }
+.cpr-flex-col { display: flex; flex-direction: column; }
+.cpr-flex-wrap { flex-wrap: wrap; }
+.cpr-flex-1 { flex: 1; min-width: 0; }
+.cpr-items-center { align-items: center; }
+.cpr-items-start { align-items: flex-start; }
+.cpr-items-baseline { align-items: baseline; }
+.cpr-justify-between { justify-content: space-between; }
+.cpr-justify-center { justify-content: center; }
+.cpr-justify-end { justify-content: flex-end; }
+
+.cpr-gap-05 { gap: 0.125rem; }
+.cpr-gap-1 { gap: 0.25rem; }
+.cpr-gap-15 { gap: 0.375rem; }
+.cpr-gap-2 { gap: 0.5rem; }
+.cpr-gap-3 { gap: 0.75rem; }
+.cpr-gap-4 { gap: 1rem; }
+.cpr-gap-6 { gap: 1.5rem; }
+
+.cpr-w-full { width: 100%; }
+.cpr-h-full { height: 100%; }
+.cpr-min-w-0 { min-width: 0; }
+.cpr-shrink-0 { flex-shrink: 0; }
+.cpr-overflow-hidden { overflow: hidden; }
+.cpr-overflow-y-auto { overflow-y: auto; }
+.cpr-overflow-x-auto { overflow-x: auto; }
+
+.cpr-text-xs { font-size: 0.75rem; }
+.cpr-text-sm { font-size: 0.875rem; }
+.cpr-text-base { font-size: 1rem; }
+.cpr-text-lg { font-size: 1.125rem; }
+.cpr-text-xl { font-size: 1.25rem; }
+.cpr-text-2xl { font-size: 1.5rem; }
+.cpr-text-micro { font-size: 0.5625rem; }
+.cpr-text-nano { font-size: 0.625rem; }
+
+.cpr-font-mono { font-family: var(--cpr-font-mono); }
+.cpr-font-bold { font-weight: 700; }
+.cpr-font-black { font-weight: 900; }
+.cpr-font-medium { font-weight: 500; }
+.cpr-uppercase { text-transform: uppercase; }
+.cpr-tracking-wider { letter-spacing: 0.05em; }
+.cpr-tracking-widest { letter-spacing: 0.1em; }
+.cpr-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cpr-text-white { color: #fff; }
+.cpr-text-muted { color: var(--cpr-text-muted); }
+.cpr-text-dim { color: var(--cpr-text-dim); }
+.cpr-text-accent { color: var(--cpr-accent); }
+.cpr-text-cyan { color: var(--cpr-cyan); }
+.cpr-text-amber { color: var(--cpr-amber); }
+.cpr-text-emerald { color: var(--cpr-emerald); }
+.cpr-text-red { color: var(--cpr-red); }
+
+.cpr-mt-auto { margin-top: auto; }
+.cpr-mb-2 { margin-bottom: 0.5rem; }
+.cpr-mb-3 { margin-bottom: 0.75rem; }
+.cpr-mb-4 { margin-bottom: 1rem; }
+.cpr-my-1 { margin-top: 0.25rem; margin-bottom: 0.25rem; }
+
+.cpr-p-1 { padding: 0.25rem; }
+.cpr-p-2 { padding: 0.5rem; }
+.cpr-p-3 { padding: 0.75rem; }
+.cpr-p-4 { padding: 1rem; }
+.cpr-py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.cpr-py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.cpr-px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+.cpr-px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.cpr-px-4 { padding-left: 1rem; padding-right: 1rem; }
+
+.cpr-rounded { border-radius: 0.25rem; }
+.cpr-rounded-md { border-radius: 0.375rem; }
+.cpr-rounded-lg { border-radius: 0.5rem; }
+.cpr-rounded-full { border-radius: 9999px; }
+
+.cpr-border { border: 1px solid var(--cpr-border); }
+.cpr-border-b { border-bottom: 1px solid var(--cpr-border); }
+.cpr-border-t { border-top: 1px solid var(--cpr-border); }
+
+.cpr-avatar-sm {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  background-color: var(--cpr-surface-inset);
+  border: 1px solid var(--cpr-border);
+  position: relative;
+}
+
+.cpr-avatar-lg {
+  width: 130px;
+  height: 130px;
+  min-width: 130px;
+  min-height: 130px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: var(--cpr-surface-inset);
+  padding: 0.25rem;
+  border: 1px solid var(--cpr-border);
+  position: relative;
+}
+
+.cpr-img-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cpr-space-y-1 > * + * { margin-top: 0.25rem; }
+.cpr-space-y-15 > * + * { margin-top: 0.375rem; }
+.cpr-space-y-2 > * + * { margin-top: 0.5rem; }
+.cpr-space-y-25 > * + * { margin-top: 0.625rem; }
+.cpr-space-y-3 > * + * { margin-top: 0.75rem; }
+.cpr-space-y-4 > * + * { margin-top: 1rem; }
+.cpr-divide-y > * + * { border-top: 1px solid var(--cpr-border); }
+
+.cpr-relative { position: relative; }
+.cpr-absolute { position: absolute; }
+.cpr-sticky { position: sticky; }
+.cpr-top-0 { top: 0; }
+.cpr-bottom-0 { bottom: 0; }
+.cpr-z-10 { z-index: 10; }
+.cpr-z-20 { z-index: 20; }
+.cpr-z-30 { z-index: 30; }
+
+.cpr-block { display: block; }
+.cpr-inline-block { display: inline-block; }
+.cpr-inline-flex { display: inline-flex; }
+.cpr-hidden { display: none; }
+.cpr-italic { font-style: italic; }
+.cpr-text-center { text-align: center; }
+.cpr-text-right { text-align: right; }
+.cpr-cursor-pointer { cursor: pointer; }
+.cpr-cursor-default { cursor: default; }
+
+.cpr-opacity-20 { opacity: 0.2; }
+.cpr-opacity-40 { opacity: 0.4; }
+.cpr-opacity-60 { opacity: 0.6; }
+.cpr-opacity-75 { opacity: 0.75; }
+
+.cpr-w-5 { width: 1.25rem; }
+.cpr-h-5 { height: 1.25rem; }
+.cpr-w-6 { width: 1.5rem; }
+.cpr-w-7 { width: 1.75rem; }
+.cpr-h-7 { height: 1.75rem; }
+.cpr-w-12 { width: 3rem; }
+.cpr-w-16 { width: 4rem; }
+.cpr-w-40 { width: 10rem; }
+.cpr-w-48 { width: 12rem; }
+
+.cpr-max-w-xs { max-width: 20rem; }
+.cpr-max-w-sm { max-width: 24rem; }
+.cpr-max-w-md { max-width: 28rem; }
+.cpr-max-w-2xl { max-width: 42rem; }
+.cpr-max-w-4xl { max-width: 56rem; }
+.cpr-mx-auto { margin-left: auto; margin-right: auto; }
+
+.cpr-pl-1 { padding-left: 0.25rem; }
+.cpr-pl-2 { padding-left: 0.5rem; }
+.cpr-pb-1 { padding-bottom: 0.25rem; }
+.cpr-pb-2 { padding-bottom: 0.5rem; }
+.cpr-pb-3 { padding-bottom: 0.75rem; }
+.cpr-pt-05 { padding-top: 0.125rem; }
+.cpr-pt-1 { padding-top: 0.25rem; }
+
+.cpr-tactical-tile {
+  border-radius: 0.25rem;
+  border: 1px solid var(--cpr-border);
+  background-color: var(--cpr-surface-inset);
+  padding: 0.5rem;
+}
+
+.cpr-tactical-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-family: var(--cpr-font-mono);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.cpr-tactical-badge-cyan {
+  background-color: var(--cpr-cyan-subtle);
+  color: var(--cpr-cyan);
+  border-color: rgba(34, 211, 238, 0.2);
+}
+
+.cpr-tactical-badge-amber {
+  background-color: var(--cpr-amber-subtle);
+  color: var(--cpr-amber);
+  border-color: rgba(251, 191, 36, 0.2);
+}
+
+.cpr-tactical-badge-red {
+  background-color: var(--cpr-accent-subtle);
+  color: var(--cpr-accent);
+  border-color: rgba(255, 0, 60, 0.2);
+}
+
+/* ==========================================================================
+   Accessibility: Reduced Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .cpr-pulse-dot {
+    animation: none;
+  }
+  .cpr-root * {
+    transition: none !important;
+  }
+}
+

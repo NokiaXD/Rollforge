@@ -1,0 +1,22 @@
+{
+  "name": "@rollforge/cpr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@rollforge/extension-api": "workspace:*",
+    "@rollforge/protocol": "workspace:*",
+    "preact": "^10.24.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "jsdom": "^30.1.1",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.0"
+  }
+}
