@@ -92,7 +92,7 @@ describe("createBoundInput", () => {
           throw new DocumentUpdateRejection("stale-rev");
         }),
       },
-    } as Partial<ClientExtensionAPI>);
+    } as unknown as Partial<ClientExtensionAPI>);
     const BoundInput = createBoundInput(api);
     const host = document.createElement("div");
     mountInto(host, <BoundInput path="name" documentId="doc-1" />);
@@ -118,7 +118,7 @@ describe("createBoundInput", () => {
           throw new Error("boom");
         }),
       },
-    } as Partial<ClientExtensionAPI>);
+    } as unknown as Partial<ClientExtensionAPI>);
     const BoundInput = createBoundInput(api);
     const host = document.createElement("div");
     mountInto(host, <BoundInput path="name" documentId="doc-1" />);
@@ -145,7 +145,7 @@ describe("createBoundInput", () => {
         list: () => [],
         update: async () => sampleDoc,
       },
-    } as Partial<ClientExtensionAPI>);
+    } as unknown as Partial<ClientExtensionAPI>);
     const BoundInput = createBoundInput(api);
     const host = document.createElement("div");
     mountInto(host, <BoundInput path="name" documentId="doc-1" />);

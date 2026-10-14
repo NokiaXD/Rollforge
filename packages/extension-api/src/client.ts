@@ -50,6 +50,60 @@ export interface ClientPanelRegistration {
   documentTypes?: string[];
 }
 
+/** What the host hands to a modal component: the extension's own api + a close. */
+export interface ClientModalProps {
+  api: ClientExtensionAPI;
+  close: () => void;
+}
+
+export interface ClientModalRegistration<TProps = Record<string, unknown>> {
+  //  One window per id: opening an id already on screen replaces it.
+  id: string;
+  title: string;
+  //  The extension owns the window's BODY. The host owns the frame — header,
+  //  drag, resize, maximize, Esc, ✕ and the focus/cascade stack — exactly like
+  //  a document sheet. An extension rendering its own `fixed` overlay inside a
+  //  sidebar gets the sidebar as containing block and clips.
+  component: ComponentType<ClientModalProps & TProps>;
+  props?: TProps;
+  initialWidth?: number;
+}
+
+//  The core's ContextMenu shape (state/ui.ts `ContextMenuItem`), verbatim: one
+//  renderer, one z-index, one Esc/click-away. A row that needs an action no
+//  longer has to paint a button per action next to every row.
+export interface ClientContextMenuItem {
+  label?: string;
+  onClick?: () => void;
+  //  Right-aligned key hint, or the reason an item is disabled.
+  hint?: string;
+  danger?: boolean;
+  disabled?: boolean;
+  divider?: boolean;
+}
+
+//  Upload an image and get it back shaped for a token: a square cover-crop, or
+//  a circle clipped over a frame colour. Shared by every extension because the
+//  work is identical and has no natural home in any one of them — a compendium
+//  portrait, an item icon and a character sheet's photo all want the same
+//  thing. The File is read in the browser and returned as a data URL: nothing is
+//  uploaded, so the caller stores it wherever it keeps its document data and no
+//  endpoint or static mount has to exist for it.
+export type ClientImageShape = "square" | "circle";
+
+export interface ClientImagePickerProps {
+  // Current image as a data URL, or null.
+  value: string | null;
+  // Emits the shaped data URL, or null when the image is removed.
+  onChange: (dataUrl: string | null) => void;
+  shape?: ClientImageShape;
+  // Frame colour behind a circular image. Ignored while square.
+  color?: string;
+  label?: string;
+  // Compact mode fits 100% into an avatar container without external inputs or labels.
+  compact?: boolean;
+}
+
 export interface ClientUIAPI {
   registerSheet(opts: {
     documentType: string;
@@ -69,6 +123,24 @@ export interface ClientUIAPI {
   //  had no way into the sheets the collection is made of, so every row would
   //  have been decoration.
   openDocument(id: string): void;
+  //  A window in the host's floating-window shell, the same one a document
+  //  sheet and a popped-out panel use (WindowFrame: drag, resize, maximize,
+  //  Esc, ✕, cascade and focus stack). Without it an extension renders
+  //  `fixed inset-0` from inside a sidebar, where the sidebar is the containing
+  //  block and the panel clips it.
+  openModal<TProps = Record<string, unknown>>(opts: ClientModalRegistration<TProps>): void;
+  closeModal(id: string): void;
+  //  The host's image picker: a file input plus the token-shaped cut (square or
+  //  circle with a frame colour). Owned by the core so a raw-served extension
+  //  file can offer an upload without a `<input type=file>`, a canvas and a
+  //  data URL of its own in every extension that needs one.
+  imagePicker: ComponentType<ClientImagePickerProps>;
+  //  The host's own right-click menu. `pos` is in client coordinates, so both
+  //  `e.clientX/clientY` and a `getBoundingClientRect()` corner work.
+  openContextMenu(
+    pos: { x: number; y: number },
+    items: readonly ClientContextMenuItem[],
+  ): void;
   //  The host's OWN preact, handed over for the same reason as
   //  `api.canvas.pixi`: a raw-served extension file must not `import "preact"`.
   //  The import map only exists under the Vite dev server, and even there

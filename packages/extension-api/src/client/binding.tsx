@@ -25,6 +25,7 @@ const DEFAULT_MESSAGES: Record<DocumentUpdateRejectionReason | "ok", string> = {
   "migration-blocked": "La migración está bloqueada. Revisa /migrations.",
   "stale-rev": "Alguien más editó esto. Refresca los datos.",
   "not-found": "Este documento ya no existe.",
+  "id-exists": "Ya existe un documento con ese identificador.",
   "network-error": "Falló la conexión con el servidor.",
 };
 

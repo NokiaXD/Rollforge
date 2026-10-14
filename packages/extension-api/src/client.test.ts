@@ -17,6 +17,19 @@ function makeApi(): ClientExtensionAPI {
     registerPanel: () => {},
     notify: () => {},
     openDocument: () => {},
+    openModal: () => {},
+    openContextMenu: () => {},
+    closeModal: () => {},
+    imagePicker: () => null,
+    preact: {
+      h: (() => null) as never,
+      Fragment: (() => null) as never,
+      useState: (() => []) as never,
+      useRef: (() => ({ current: null })) as never,
+      useEffect: () => {},
+      useMemo: (() => null) as never,
+      useCallback: (() => null) as never,
+    },
   };
   const hooksEngine = new HooksEngine();
   return {
@@ -127,15 +140,26 @@ describe("freezeClientAPI", () => {
     ]);
   });
 
-  it("ui surface exposes exactly { notify, openDocument, registerPanel, registerSheet }", () => {
+  it("ui surface exposes exactly { closeModal, imagePicker, notify, openContextMenu, openDocument, openModal, registerPanel, registerSheet }", () => {
     const frozen = freezeClientAPI(makeApi());
     // `registerPanel` added in Paso 18: the first extension-owned surface
     // that is not a modal sheet. `openDocument` in Paso 25: the way a panel
-    // hands a row to the sheet. §13 covers the shape of `api` under semver,
+    // hands a row to the sheet. `openModal`/`closeModal` in CPR: an extension
+    // rendered its own `fixed inset-0` inside a sidebar, where the sidebar is
+    // the containing block and the panel clips it. `openContextMenu` in CPR:
+    // same reason, one level down — a row with N actions used to need N
+    // buttons painted next to it. §13 covers the shape of `api` under semver,
     // so the contract is asserted here and each addition is deliberate.
+    // `imagePicker` in CPR: the first extension needed an image upload and a
+    // token-shaped cut, and every extension that uploads a picture afterwards
+    // wants the identical thing.
     expect(Object.keys(frozen.ui).sort()).toEqual([
+      "closeModal",
+      "imagePicker",
       "notify",
+      "openContextMenu",
       "openDocument",
+      "openModal",
       "registerPanel",
       "registerSheet",
     ]);
